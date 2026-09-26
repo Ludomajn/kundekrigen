@@ -87,7 +87,8 @@ export function lavKlient(verden, transport, bus) {
 
         case 'krater':
           tjekSeq(m);
-          if (m.d.k === 2) verden.terraen.kapsel(m.d.x, m.d.y, m.d.x2, m.d.y2, m.d.r, false);
+          if (m.d.k === 1) verden.terraen.bjaelke(m.d.x, m.d.y, m.d.hl, m.d.ht, m.d.v, undefined, false);
+          else if (m.d.k === 2) verden.terraen.kapsel(m.d.x, m.d.y, m.d.x2, m.d.y2, m.d.r, false);
           else if (m.d.k === 3) verden.terraen.fyld(m.d.x, m.d.y, m.d.r, undefined, false);
           else verden.terraen.carve(m.d.x, m.d.y, m.d.r, false);
           break;

@@ -661,6 +661,12 @@ function koblHaendelser() {
     if (e.vaaben === 'grenroer') lyd.stemme('stemme_tonerkanon', { chance: 0.5 });
   });
   bus.paa('bjaelkeSat', () => lyd.afspil('byg'));
+  bus.paa('terraenBygget', (e) => {
+    // Papiret dumper ned; rampen og skummet bygges. Én lyd, gennem kanalen.
+    if (e.slags === 'papir') lyd.afspil('sfx_landing', { vol: 0.7, tone: 1.15 });
+    else lyd.afspil('byg', { tone: e.slags === 'skum' ? 0.8 : 1 });
+    if (e.slags === 'rampe') hud.banner('Kabelbakken er lagt — gå op ad den', 1400);
+  });
   bus.paa('teleport', () => lyd.afspil('sfx_teleport', { vol: 0.8 }));
   bus.paa('lunteSat', () => lyd.afspil('klik', { vol: 0.6 }));
   bus.paa('redskabStart', (e) => lyd.afspil(e.slags === 'bor' ? 'stemme_systemnedbrud' : 'splint', { vol: 0.9 }));

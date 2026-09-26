@@ -34,7 +34,7 @@ export function tagSnapshot(v) {
     projektiler: v.projektiler.map((p) => ({
       id: p.id, x: r1(p.x), y: r1(p.y), vx: r1(p.vx), vy: r1(p.vy), r: p.r,
       vindFaktor: p.vindFaktor, hop: p.hop, rammerBaevere: p.rammerBaevere,
-      detonation: p.detonation, klynge: p.klynge, lunte: p.lunte,
+      detonation: p.detonation, fyld: p.fyld, klynge: p.klynge, lunte: p.lunte,
       ejer: p.ejer, ejerHold: p.ejerHold, sprite: p.sprite, spor: p.spor, sover: p.sover,
     })),
     placerede: v.placerede.map((p) => ({ ...p })),

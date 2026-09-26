@@ -19,7 +19,7 @@ const VIDERESEND = new Set([
   'eksplosion', 'skade', 'doedsfald', 'drukner', 'kasseFalder', 'kasseSamlet',
   'pludseligDoed', 'vandStiger', 'teleport', 'bjaelkeSat', 'straale',
   'skudAffyret', 'vaabenValgt', 'hop', 'salto', 'klyngeDelt', 'dinTur',
-  'turAfsluttet', 'tvungenRo', 'redskabStart', 'redskabSlut', 'staaOver',
+  'turAfsluttet', 'tvungenRo', 'redskabStart', 'redskabSlut', 'staaOver', 'terraenBygget',
   'ammoAendret', 'lunteSat', 'hændelse',
 ]);
 
@@ -55,7 +55,7 @@ function skridt() {
 
   for (const e of h) {
     if (e.navn === 'krater') {
-      send('krater', { x: e.x, y: e.y, r: e.r, k: e.k, x2: e.x2, y2: e.y2 });
+      send('krater', { x: e.x, y: e.y, r: e.r, k: e.k, x2: e.x2, y2: e.y2, hl: e.hl, ht: e.ht, v: e.v });
     } else if (e.navn === 'turStart') {
       send('tur', { baever: e.baever, hold: e.hold, tid: e.tid,
                     fase: verden.tur.tilstand, vind: e.vind, vejr: e.vejr,

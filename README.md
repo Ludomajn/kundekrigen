@@ -120,6 +120,9 @@ tegnes foran fingrene; sigtevåben sidder i hånden og drejes med sigtet.
 | Loddekolbe | Brænder en vandret tunnel |
 | Systemnedbrud | Borer lige ned |
 | Serverrack | Stiller en platform op |
+| Papirbunke | Kastes og bliver liggende som en bakke — dækning, bro eller fyld i et krater |
+| Kabelbakke | Rampe skråt op foran kunden; turen fortsætter, så man kan gå op og skyde |
+| Byggeskum | Sprøjter en klump skum, hvor man peger (op til 360 wu væk); turen fortsætter |
 | Fjernsupport | Teleport |
 | Faxregn | Fem faxmaskiner ovenfra |
 | Sæt på hold · Opsig aftalen | Stå over · overgiv |

@@ -54,6 +54,7 @@ function ballistisk(v, b, w, kraft01, m, h) {
     hop: w.projektil.hop,
     rammerBaevere: w.projektil.rammerBaevere,
     detonation: w.detonation,
+    fyld: w.fyld || null,
     klynge: w.klynge || null,
     lunte: w.lunte ? Math.round((v.valgtLunte || w.lunte.start) * 60) : -1,
     ejer: b.id, ejerHold: b.hold,
@@ -209,6 +210,34 @@ function redskab(v, b, w, ekstra, h) {
       v.terraen.bjaelke(x, y, w.bjaelke.halvL, w.bjaelke.halvT, vinkel);
       h.push({ navn: 'bjaelkeSat', x: x | 0, y: y | 0, hl: w.bjaelke.halvL,
                ht: w.bjaelke.halvT, v: vinkel });
+      h.push({ navn: 'krater', k: 1, x: x | 0, y: y | 0, hl: w.bjaelke.halvL, ht: w.bjaelke.halvT, v: vinkel });
+      for (const bb of v.baevere) if (!bb.doed) v.frigoerBaever(bb);
+      break;
+    }
+    case 'rampe': {
+      // Én skrå plade, hvis overside starter lige under fødderne og stiger
+      // i den retning, kunden vender.
+      const r = w.rampe, dir = b.retning >= 0 ? 1 : -1;
+      const a = r.vinkel, cos = Math.cos(a), sin = Math.sin(a);
+      const ex = b.x + dir * r.start, ey = b.y - 1;
+      const nx = -sin * dir, ny = cos;                       // oversidens normal
+      const cx = ex + dir * cos * r.halvL - nx * r.halvT;
+      const cy = ey + sin * r.halvL - ny * r.halvT;
+      const vinkel = dir * a;
+      v.terraen.bjaelke(cx, cy, r.halvL, r.halvT, vinkel);
+      h.push({ navn: 'krater', k: 1, x: cx | 0, y: cy | 0, hl: r.halvL, ht: r.halvT, v: vinkel });
+      h.push({ navn: 'terraenBygget', slags: 'rampe', x: b.x | 0, y: b.y | 0 });
+      for (const bb of v.baevere) if (!bb.doed) v.frigoerBaever(bb);
+      break;
+    }
+    case 'skum': {
+      // Byggeskum: en stor klump præcis dér, markøren står (inden for rækkevidde).
+      let x = ekstra.x ?? b.x, y = ekstra.y ?? b.y;
+      const dx = x - b.x, dy = y - b.y, d = Math.hypot(dx, dy), maks = w.skum.raekkevidde;
+      if (d > maks) { x = b.x + dx / d * maks; y = b.y + dy / d * maks; }
+      v.terraen.fyld(x, y, w.skum.r);
+      h.push({ navn: 'krater', x: x | 0, y: y | 0, r: w.skum.r, k: 3 });
+      h.push({ navn: 'terraenBygget', slags: 'skum', x: x | 0, y: y | 0 });
       for (const bb of v.baevere) if (!bb.doed) v.frigoerBaever(bb);
       break;
     }

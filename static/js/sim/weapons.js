@@ -102,6 +102,30 @@ export const VAABEN = {
     kasse: { kan: true, vaegt: 2 }, retreatTicks: 300, afslutterTur: false,
     hjaelp: 'Stiller et serverrack op som platform. Drej med Shift + pil.',
   },
+  papirbunke: {
+    id: 'papirbunke', navn: 'Papirbunke', kategori: 'kast', ikon: 'v-papir',
+    arketype: 'ballistisk', sigte: 'vinkel+kraft', ammo: 3,
+    kraft: { min: 200, max: 1050, opladTid: 75 },
+    projektil: { r: 6, vindFaktor: 0.6, hop: 0, rammerBaevere: true, sprite: 'papir', spor: null },
+    fyld: { r: 36 },
+    kasse: { kan: true, vaegt: 2 }, retreatTicks: 240, afslutterTur: true,
+    hjaelp: 'Kast en bunke A4-papir. Den bliver liggende som en bakke — byg dækning, en bro eller fyld et krater.',
+  },
+  kabelbakke: {
+    id: 'kabelbakke', navn: 'Kabelbakke', kategori: 'udstyr', ikon: 'v-rampe',
+    arketype: 'redskab', redskab: 'rampe', sigte: 'ingen', ammo: 2,
+    // Hældningen skal være til at gå op ad (physics: TRIN_OP pr. skridt ≈ 66°).
+    rampe: { halvL: 60, halvT: 5, vinkel: 0.5, start: 12 },
+    kasse: { kan: true, vaegt: 2 }, retreatTicks: 300, afslutterTur: false, beholderTur: true,
+    hjaelp: 'En rampe skråt op foran dig, så du kan gå op ad skrænter. Turen fortsætter bagefter.',
+  },
+  byggeskum: {
+    id: 'byggeskum', navn: 'Byggeskum', kategori: 'udstyr', ikon: 'v-skum',
+    arketype: 'redskab', redskab: 'skum', sigte: 'markoer', ammo: 2,
+    skum: { r: 44, raekkevidde: 360 },
+    kasse: { kan: true, vaegt: 2 }, retreatTicks: 300, afslutterTur: false, beholderTur: true,
+    hjaelp: 'Sprøjt en stor klump skum dér, du peger. Byg en væg, luk et hul eller begrav en mine. Turen fortsætter bagefter.',
+  },
   gangtunnel: {
     id: 'gangtunnel', navn: 'Fjernsupport', kategori: 'udstyr', ikon: 'v-teleport',
     arketype: 'redskab', redskab: 'teleport', sigte: 'markoer', ammo: 2,

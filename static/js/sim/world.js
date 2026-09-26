@@ -315,6 +315,14 @@ class Verden {
       vinkel: this.markoer.vinkel, retning: this.markoer.retning,
     }).forEach((e) => h.push(e));
 
+    // Byggeredskaber koster ammo, men turen fortsætter: man bygger rampen
+    // eller dækningen og bruger resten af tiden på at gå og skyde.
+    if (w.beholderTur) {
+      if (ammo > 0) hold.ammo[w.id] = ammo - 1;
+      h.push({ navn: 'ammoAendret', hold: b.hold, vaaben: w.id, ammo: hold.ammo[w.id] });
+      return;
+    }
+
     this.brugtIDenneTur++;
     const maksBrug = w.brugPrTur || 1;
     const braendteAmmo = this.brugtIDenneTur >= maksBrug;
@@ -390,6 +398,14 @@ class Verden {
       this.projektiler.splice(i, 1);
       if (traef.slags === 'ude') { h.push({ navn: 'projektilUde', id: p.id }); continue; }
       if (p.klynge) B.delKlynge(this, p).forEach((e) => h.push(e));
+      if (p.fyld) {
+        // Papirbunken: bliver liggende som en bakke. Kunder, den lander på,
+        // skubbes op ovenpå i stedet for at blive begravet.
+        this.terraen.fyld(p.x, p.y, p.fyld.r);
+        h.push({ navn: 'krater', x: p.x | 0, y: p.y | 0, r: p.fyld.r | 0, k: 3 });
+        h.push({ navn: 'terraenBygget', slags: 'papir', x: p.x | 0, y: p.y | 0 });
+        for (const bb of this.baevere) if (!bb.doed) this.frigoerBaever(bb);
+      }
       const d = p.detonation;
       if (d) {
         const direkte = traef.slags === 'baever' ? traef.baever.id : null;
@@ -504,7 +520,10 @@ class Verden {
         // Bevægelse er stadig tilladt mens tilbagetogsuret løber.
         if (this.accepterBevaegelse()) this._styr(h, true);
         tur.oploesningTick++;
-        if (TU.erIRo(this)) {
+        // Går kunden stadig, mens tilbagetogsuret løber, er turen ikke slut:
+        // ellers kappede en hurtig ro tilbagetoget over midt i et skridt.
+        const traekker = this.accepterBevaegelse() && (this.holdt & (K.VENSTRE | K.HOEJRE));
+        if (TU.erIRo(this) && !traekker) {
           tur.roTael++;
           if (tur.roTael >= TU.RO_HYSTERESE) { tur.tilstand = T.SKADE; tur.tilstandTick = 0; }
         } else {

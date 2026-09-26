@@ -1161,6 +1161,40 @@ export const HAANDVAABEN = {
     g.strokeStyle = '#C9CED3'; g.lineWidth = 3;
     for (const y of [-46, -38]) { g.beginPath(); g.moveTo(cx - 24, cy + y); g.lineTo(cx + 6, cy + y); g.stroke(); }
   },
+  papirbunke(g) {                           // papirbunke: en bunke A4 med elastik
+    const cx = 128, cy = 70;
+    const ark = [[-6, 22, '#D9D9D4'], [4, 12, '#E6E6E1'], [-3, 2, '#EFEFEA'], [5, -8, '#F7F7F3'], [0, -18, '#FFFFFF']];
+    for (const [dx, dy, f] of ark) {
+      hvFelt(g, '#B9BDC0', () => { g.beginPath(); g.roundRect(cx - 62 + dx, cy + dy + 2, 124, 12, 2); });
+      hvFelt(g, f, () => { g.beginPath(); g.roundRect(cx - 62 + dx, cy + dy - 2, 124, 12, 2); });
+    }
+    g.strokeStyle = '#C9CED3'; g.lineWidth = 2.5;
+    for (const y of [-14, -10]) { g.beginPath(); g.moveTo(cx - 44, cy + y); g.lineTo(cx + 30, cy + y); g.stroke(); }
+    hvFelt(g, '#E8543F', () => { g.beginPath(); g.roundRect(cx + 26, cy - 22, 10, 50, 3); });
+  },
+  kabelbakke(g) {                           // kabelbakke: perforeret stålrende med kabler
+    hvFelt(g, '#8B939A', () => { g.beginPath(); g.roundRect(6, 50, 244, 40, 4); });
+    hvFelt(g, '#B5BBC1', () => { g.beginPath(); g.roundRect(6, 50, 244, 12, [4, 4, 0, 0]); });
+    hvFelt(g, '#6E767D', () => { g.beginPath(); g.roundRect(6, 80, 244, 10, [0, 0, 4, 4]); });
+    g.fillStyle = '#5C6670';
+    for (let x = 20; x < 244; x += 22) { g.beginPath(); g.roundRect(x, 66, 12, 6, 3); g.fill(); }
+    g.lineCap = 'round'; g.lineWidth = 7;
+    for (const [f, y, b] of [['#2E6DB4', 48, 10], ['#FFD86F', 44, -8], ['#E8543F', 47, 6]]) {
+      g.strokeStyle = f; g.beginPath(); g.moveTo(10, y);
+      g.bezierCurveTo(80, y - b, 170, y + b, 246, y); g.stroke();
+    }
+  },
+  skumpistol(g) {                           // byggeskum: dåse på skumpistol
+    hvFelt(g, '#F2C230', () => { g.beginPath(); g.roundRect(22, 16, 66, 82, 12); });
+    hvFelt(g, '#D9A91C', () => { g.beginPath(); g.roundRect(22, 16, 20, 82, [12, 0, 0, 12]); });
+    hvFelt(g, '#3A424A', () => { g.beginPath(); g.roundRect(34, 40, 42, 26, 4); });
+    g.fillStyle = '#FFFFFF'; g.font = '800 13px Poppins, Calibri, sans-serif';
+    g.textAlign = 'center'; g.fillText('PU', 55, 58);
+    hvFelt(g, '#2A3036', () => { g.beginPath(); g.roundRect(80, 86, 132, 18, 6); });
+    hvFelt(g, '#3A424A', () => { g.beginPath(); g.moveTo(100, 102); g.lineTo(124, 102); g.lineTo(116, 126); g.lineTo(94, 126); g.closePath(); });
+    hvFelt(g, '#8B939A', () => { g.beginPath(); g.roundRect(208, 90, 34, 8, 4); });
+    hvFelt(g, '#FFF3C4', () => { g.beginPath(); g.arc(246, 88, 9, 0, Math.PI * 2); g.arc(238, 80, 7, 0, Math.PI * 2); });
+  },
   flag(g) {                                 // overgiv dig: hvidt flag på stang
     hvFelt(g, '#8A5F3A', () => { g.beginPath(); g.roundRect(118, 8, 8, 116, 4); });
     hvFelt(g, '#F4F4F2', () => { g.beginPath(); g.moveTo(126, 12); g.quadraticCurveTo(170, 4, 210, 18);
@@ -1208,6 +1242,9 @@ export const VAABEN_STR = {
   mail_alarm: 9,
   ringbind: 12,
   serverrack: 20,
+  papirbunke: 10,      // bunke A4, holdt og kastet
+  kabelbakke: 22,
+  skumpistol: 13,      // byggeskum
   fjernbetjening: 9,   // fjernsupport
   bordtelefon: 16,     // telefonen, der ringer
   printer: 26,         // printeren (tidligere tønden), der springer

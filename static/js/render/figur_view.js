@@ -122,6 +122,9 @@ const MODEL = {
   baevermine:       { tegn: 'mail',           greb: 'haand' },   // Phishing-mine
   halesmaek:        { tegn: 'ringbind',       greb: 'haand' },   // Ringbindsslag
   bjaelke:          { tegn: 'serverrack',     greb: 'haand' },   // Serverrack
+  papirbunke:       { tegn: 'papirbunke',     greb: 'haand' },   // Papirbunke
+  kabelbakke:       { tegn: 'kabelbakke',     greb: 'haand' },   // Kabelbakke
+  byggeskum:        { tegn: 'skumpistol',     greb: 'sigte',   baglaens: 0.25 },  // Byggeskum
   gangtunnel:       { tegn: 'fjernbetjening', greb: 'haand' },   // Fjernsupport
   traestammeregn:   { tegn: 'radio',          greb: 'haand' },   // Faxregn
   overgiv:          { tegn: 'flag',           greb: 'haand' },   // Opsig aftalen

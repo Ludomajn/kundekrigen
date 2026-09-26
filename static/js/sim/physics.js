@@ -50,9 +50,11 @@ export function vindNu(vind, vejr, tick, froe = 0) {
 }
 
 export const luftmodstand = (vejr) => (VEJR_FYSIK[vejr] || VEJR_FYSIK.solskin).modstand;
-export const FALD_GRAENSE = 55;       // wu man må falde gratis
-export const FALD_DELER = 6.5;
-export const FALD_MAKS = 35;
+// Et hop når ~57 wu op og en baglæns salto ~113 wu; ingen af dem må gøre
+// ondt på flad jord. Først et rigtigt fald (tre figurhøjder+) koster.
+export const FALD_GRAENSE = 150;      // wu man må falde gratis
+export const FALD_DELER = 9;
+export const FALD_MAKS = 25;
 
 /** Er bæverkapslen fri i (x, y)? y er fodpunktet. */
 export function kapselFri(t, x, y) {

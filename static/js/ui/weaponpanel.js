@@ -29,6 +29,13 @@ export function lavVaabenpanel(rod) {
   let vedLuk = () => {};
 
   rod.className = 'vaabenpanel hide';
+  // Musen vælger også: et klik på et kort er det samme som Enter.
+  rod.addEventListener('click', (e) => {
+    const c = e.target.closest('.vp-celle');
+    if (!aaben || !c || c.disabled) return;
+    vedValg(c.dataset.vaaben);
+    luk();
+  });
 
   function byg(v, baever) {
     const grupper = KATEGORIER.map((k) => ({

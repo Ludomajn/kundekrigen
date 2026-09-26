@@ -53,6 +53,7 @@ export function lavProjektil(id, opt) {
     hop: opt.hop ?? 0,
     rammerBaevere: opt.rammerBaevere ?? true,
     detonation: opt.detonation,
+    fyld: opt.fyld || null,              // { r }: bygger terræn, hvor den lander (papirbunken)
     klynge: opt.klynge || null,
     lunte: opt.lunte ?? -1,              // i tick; -1 = detonerer ved nedslag
     ejer: opt.ejer ?? null,

@@ -418,6 +418,7 @@ export function lavProjektilView(scene) {
     'frø':  { tegn: 'tast' },                        // løse taster
     sten:   { billede: 'mursten', b: 16 },           // "mursten fra loftet"
     dynamit:{ tegn: 'opdatering' },
+    papir:  { tegn: 'papirbunke', drejer: true },    // Papirbunke
   };
 
   function lavMesh(k, flyver) {
