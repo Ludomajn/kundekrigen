@@ -17,10 +17,15 @@ import { HZ, DT } from '../core/tick.js';
 const ST_HVER = 1;                 // 60 Hz til hovedtråden; netværket tyndes ud i main.js
 const VIDERESEND = new Set([
   'eksplosion', 'skade', 'doedsfald', 'drukner', 'kasseFalder', 'kasseSamlet',
-  'pludseligDoed', 'vandStiger', 'teleport', 'bjaelkeSat', 'straale',
+  'pludseligDoed', 'vandStiger', 'teleport', 'straale',
   'skudAffyret', 'vaabenValgt', 'hop', 'salto', 'klyngeDelt', 'dinTur',
   'turAfsluttet', 'tvungenRo', 'redskabStart', 'redskabSlut', 'staaOver', 'terraenBygget',
   'ammoAendret', 'lunteSat', 'hændelse',
+  // Våbnene fra overhalingen: klask, kraftfelt, tvangsopdatering, fjernsupport, COVID.
+  'klask', 'skjoldOp', 'skjoldBlok', 'skjoldSlut', 'opdateringRamt', 'turSprungetOver',
+  'teleportAfvist', 'smittet', 'rask', 'covidSky',
+  // Havde lyttere i main.js, men nåede aldrig frem.
+  'fuldtraeffer', 'telefonRinger', 'telefonOpkald', 'pillerDukketOp', 'printerSprang',
 ]);
 
 let verden = null;

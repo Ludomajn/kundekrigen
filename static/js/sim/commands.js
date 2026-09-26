@@ -15,8 +15,10 @@ export const K = {
   LAD: 32, SALTO: 64, FIN: 128,
 };
 
+/* 'panel' {aaben}: våbenskuffen er åben i spillerens egen tur. Uret står så
+ * stille — højst PANEL_PAUSE_LOFT tick pr. tur (turn.js). */
 export const HANDLINGER = new Set([
-  'vaelgVaaben', 'affyr', 'markoer', 'lunte', 'staaOver', 'drejBjaelke', 'retning',
+  'vaelgVaaben', 'affyr', 'markoer', 'lunte', 'staaOver', 'retning', 'panel',
 ]);
 
 export function holdKommando(seq, bitmaske) {

@@ -24,7 +24,7 @@ import { lavBaeverView, indlaesGrafik } from './render/figur_view.js';
 import { lavParallaks } from './render/parallax.js';
 import { lavVejr } from './render/weather.js';
 import { lavVand } from './render/water.js';
-import { lavFx, lavProjektilView, lavGenstandView, lavSigte, telefonRinger } from './render/fx.js';
+import { lavFx, lavProjektilView, lavGenstandView, lavSigte, telefonRinger, mineSekund } from './render/fx.js';
 import { OPKALD } from './sim/opkald.js';
 import { lavDebug } from './render/debug.js';
 import { lavSorteHuller } from './render/fejl40.js';
@@ -166,7 +166,7 @@ const menu = lavMenu(menuRod, {
     S.transport?.send({ t: 'indst', d });
     S.transport?.send({ t: 'start', d: {} });
   },
-  fortsaet() { S.pause = false; menu.skjul(); },
+  fortsaet() { S.pause = false; S.pauseSlut = performance.now(); menu.skjul(); },
   spilIgen() {
     if (S.erVaert || !S.erNet) { S.transport?.send({ t: 'start', d: {} }); menu.skjul(); }
     else menu.vis('lobby', S.lobby);
@@ -272,6 +272,8 @@ function paaBesked(m) {
     case 'kamp_afbrudt':
       hud?.banner(m.d.grund || T.net.kampAfbrudt, 4000, 'advarsel');
       S.tilstand = 'lobby';
+      lyd.stopAlleLoekker();
+      lyd.stopStemme();
       break;
     case 'smidt_ud':
       alert(m.d.grund);
@@ -319,20 +321,23 @@ function startIntro(vi) {
   hudRod.classList.add('intro-aktiv');
   vi.kamera.kigPaaBanen(true);
   const alle = S.verden.baevere.slice().sort((a, b) => a.x - b.x);
+  // Frit over hovedet (46 wu figur): under et fortdæk falder man kun fra loftet.
+  const t = S.verden.terraen;
+  const frit = (b) => { let y = Math.round(b.y) + 48; while (y < b.y + 400 && !t.fast(Math.round(b.x), y)) y++; return y - (b.y + 48); };
   alle.forEach((b, i) => vi.baevere.get(b.id)?.introFald(0.45 + i * (2.2 / Math.max(1, alle.length)), () => {
-    lyd.afspil('sfx_landing', { vol: 0.55, tone: 0.85 + Math.random() * 0.3 });
+    lyd.afspil('landing', { vol: 0.8, tone: 0.85 + Math.random() * 0.3 });
     for (let k = 0; k < 6; k++) vi.fx.spor(b.x + (Math.random() - 0.5) * 22, b.y + 2);
-  }));
+  }, frit(b)));
   intro.start((n) => {
-    if (n === 0) lyd.afspil('sfx_intro_slam', { vol: 0.9, vigtig: true });
-    else lyd.afspil('sfx_nedtael', { vol: 0.8, tone: 1 + (3 - n) * 0.09, vigtig: true });
+    if (n === 0) lyd.afspil('intro_slam', { vigtig: true });
+    else lyd.afspil('nedtael', { tone: 1 + (3 - n) * 0.09, vigtig: true });
   });
 }
 
 function slutIntro() {
   if (!S.introStartet || S.introSlut) return;
   S.introSlut = true;
-  if (intro.go()) lyd.afspil('sfx_kamp_start', { vol: 0.85, vigtig: true });
+  if (intro.go()) lyd.afspil('kamp_start', { vol: 1.6, vigtig: true });
   visning?.kamera.kigPaaBanen(false);
   hudRod.classList.remove('intro-aktiv');
   if (S.randomKamp) {
@@ -346,6 +351,7 @@ function slutIntro() {
 function slutFest() {
   clearTimeout(S.sangTimer);
   lyd.stopStemme();
+  lyd.stopAlleLoekker();              // boret, flyvelyden og opladningen må ikke følge med ud
   intro.stop();
   hudRod.classList.remove('intro-aktiv');
   clearTimeout(S.festTimer);
@@ -391,7 +397,7 @@ async function startKamp(opsaet) {
     kampTicks: (opsaet.indst.kamptid || 1800) * HZ,
     vind: opsaet.indst.vind !== false,
     vejr: opsaet.indst.vejr || 'auto',
-    banetype: opsaet.indst.banetype || 'aaben',
+    banetype: opsaet.indst.banetype || 'fort',
   };
 
   S.verden = lavVerden({ froe: opsaet.indst.bane >>> 0, banetype: cfg.banetype, hold, cfg });
@@ -436,14 +442,18 @@ function byggVisning() {
     vedMusik: (v) => saetLydIndstilling('musik', v),
   });
   S.visHp = new Map();
+  S.mineSek = new Map();
   hud.saetVisHp((b) => S.visHp.get(b.id)?.vist ?? b.hp);
+  // HUD'en bygges pr. kamp, så dens klik skal kobles her.
+  hud.paaVaelgVaaben((id) => vaelgVaaben(id));
+  hud.paaArsenal(() => (panel.aaben ? panel.luk() : aabnArsenal()));
   const terraen = lavTerraenView(r.scene, v.terraen, v.froeBrugt ?? v.froe);
   const pynt = lavPyntView(r.scene, v.terraen, terraen.overflader, v.froeBrugt ?? v.froe);
   const parallaks = lavParallaks(r.scene, r.kamera, v.terraen, rng, v.vejr);
   const vejr = lavVejr(r.scene, r.kamera, rng);
   const vand = lavVand(r.scene, v.terraen);
-  const fx = lavFx(r.scene);
-  const projektiler = lavProjektilView(r.scene);
+  const fx = lavFx(r.scene, r.kamera);
+  const projektiler = lavProjektilView(r.scene, fx);
   const genstande = lavGenstandView(r.scene);
   const sigte = lavSigte(r.scene);
   const kamera = lavKamera(r, v.terraen);
@@ -479,47 +489,66 @@ function koblHaendelser() {
     const k = r.kamera.position;
     const afstand = Math.hypot(e.x - k.x, e.y - k.y);
     visning.kamera.rystelse(Math.min(1, e.radius / 60), afstand);
-    // Store brag får det dybe drøn oveni; afstanden dæmper, tonen varierer.
-    const daemp = 1 / (1 + afstand / 1400);
-    lyd.afspil('nedslag', { vol: daemp, tone: 0.9 + Math.random() * 0.25 });
-    if (e.radius >= 40) lyd.afspil('brag', { vol: daemp, tone: 0.85 + Math.random() * 0.2 });
+    // Én lyd pr. brag: det dybe drøn for de store, nedslaget for de små. Med
+    // forrang, så affyringslyden ikke længere overdøver eksplosionen.
+    const rum = rumlig(e.x, e.y, 2400);
+    lyd.afspil(e.radius >= 40 ? 'brag' : 'nedslag', {
+      vol: 0.35 + 0.65 * rum.vol, pan: rum.pan, forrang: true,
+      tone: (e.radius >= 40 ? 0.85 : 0.9) + Math.random() * 0.2,
+    });
   });
   bus.paa('skudAffyret', (e) => {
     const b = S.verden.baevere.find((x) => x.id === e.baever);
-    if (b) {
+    const w = VAABEN[e.vaaben];
+    const bv = b && visning.baevere.get(b.id);
+    // Våben med flere skud pr. ammo (scanneren): husk, at turens ammo er betalt.
+    if (w?.brugPrTur > 1) S.betalt = { turNr: S.verden.tur.turNr, vaaben: e.vaaben };
+    // Kun det, der faktisk skyder, får mundingsglimt og rekyl. Klasket er et
+    // slag, minen lægges, fakturaerne regner ned — og opdateringen er en stråle.
+    if (b && ['ballistisk', 'klynge', 'hitscan'].includes(w?.arketype) && e.vaaben !== 'daemningsdynamit') {
       const m = mundingsPunkt(b);
       visning.fx.muzzle(m.x, m.y, m.dx, m.dy);
-      visning.baevere.get(b.id)?.rekylSkud();
+      bv?.rekylSkud();
     }
-    // Raketter og bøsser knalder; granater og redskaber er et kast.
-    // Brugerens egne våbenlyde; de øvrige kast og udlægninger er et kast.
+    if (w?.arketype === 'naerkamp') bv?.slag();
+    if (w?.arketype === 'luftangreb') {
+      visning.fx.fakturaRegn(e.x, e.retning ?? b?.retning ?? 1);
+      hud.banner('KVARTALSOPKRÆVNING!', 1800, 'advarsel');
+    }
+    // Brugerens egne våbenlyde; resten er kontorlyde fra "400 Sounds Pack".
     const variation = { tone: 0.95 + Math.random() * 0.1 };
     const egen = {
-      grenroer: 'stemme_kanon_lyd', splintboesse: 'stemme_skud', gnavetand: 'stemme_skud',
+      grenroer: 'stemme_kanon_lyd', splintboesse: 'stemme_skud',
       egegranat: 'stemme_granat', koglebombe: 'stemme_granat',
       halesmaek: Math.random() < 0.5 ? 'stemme_slag' : 'stemme_slag_2',
     }[e.vaaben];
-    if (e.vaaben === 'traestammeregn') lyd.afspil('stemme_fax', { vol: 0.85, maksSek: 6 });
+    const kontor = {
+      daemningsdynamit: 'opdatering_skud', baevermine: 'mine_laeg', papirbunke: 'papir_kast',
+      covid: 'covid_host',
+    }[e.vaaben];
+    // Faxen er 9,5 s lang; den må ikke holde kanalen, mens fakturaerne slår ned.
+    if (e.vaaben === 'traestammeregn') lyd.afspil('stemme_fax', { vol: 0.85, maksSek: 2.5 });
     else if (egen) lyd.afspil(egen, { ...variation, vol: 0.9 });
-    else lyd.afspil(['daemningsdynamit', 'baevermine'].includes(e.vaaben) ? 'kast' : 'skud', variation);
+    else lyd.afspil(kontor || 'kast', { ...variation, vol: kontor?.startsWith('opdatering') ? 2 : 1.2 });
     // Et skud er ude: rammer det ingen, griner kunderne, når turen skifter.
-    S.skudUde = { ramte: false };
+    // Ét pr. tur — scannerens andet skud må ikke glemme, at det første ramte.
+    S.skudUde ||= { ramte: false };
   });
   bus.paa('doedsfald', (e) => {
     hud.banner(`${e.navnTekst} har lagt på`, 1800);
     const b = S.verden.baevere.find((x) => x.id === e.baever);
     if (!b?.drukner) {
-      lyd.stemme('stemme_doed', { vigtig: true });
-      // Og så jubler den, der fik ram på kunden (venter, til "Død" er sagt).
-      lyd.stemme('stemme_kill', { vigtig: true });
-      // FEJL 40: kunden suges ind i et sort hul, før liget smælder.
+      // FEJL 40: kunden suges ind i et sort hul, før liget smælder — fejllyden
+      // først, så "Død" og jublen fra den, der fik ram på kunden (i kø).
       visning.baevere.get(e.baever)?.absorber();
       visning.sorteHuller.start(e.x, e.y + 22);
-      lyd.afspil('sfx_sort_hul', { vol: 0.8 });
+      lyd.afspil('sort_hul', { vol: 1.4, vigtig: true });
+      lyd.stemme('stemme_doed', { vigtig: true });
+      lyd.stemme('stemme_kill', { vigtig: true });
     }
   });
   bus.paa('drukner', (e) => {
-    visning.fx.plask(e.x, e.y); lyd.afspil('fald', { vol: 0.9 });
+    visning.fx.plask(e.x, e.y); lyd.afspil('plask');
     lyd.stemme('stemme_faldt_i_vandet', { vigtig: true });
   });
   bus.paa('pludseligDoed', () => hud.banner(T.spil.pludseligDoed, 3000, 'advarsel'));
@@ -588,14 +617,19 @@ function koblHaendelser() {
       mig,
     });
     // Fanfaren først, så vindersangen — de må ikke lyde oven i hinanden.
-    lyd.afspil(mig ? 'sfx_du_vandt' : f ? 'sfx_tabt' : 'sejr', { vol: 0.9, vigtig: true });
+    lyd.afspil(mig ? 'du_vandt' : f ? 'tabt' : 'sejr', { vol: mig ? 2 : 1, vigtig: true });
     if (f) S.sangTimer = setTimeout(() => {
       const sang = Math.random() < 0.5 ? 'stemme_vindersangen' : 'stemme_vindermusik_2';
       if (S.tilstand === 'sejr') lyd.stemme(sang, { vigtig: true });
     }, 1150);
     S.festTimer = setTimeout(visResultat, f ? 6500 : 2800);
   });
-  bus.paa('kasseFalder', () => hud.banner('Supportpakke på vej', 1400));
+  bus.paa('kasseFalder', (e) => {
+    if (e.slags !== 'vaaben') return;              // telefon og piller har egne bannere
+    hud.banner('Forsyningskasse på vej!', 1600);
+    const rum = rumlig(e.x, e.y, 2400);
+    lyd.afspil('kasse_falder', { vol: 0.5 + 0.8 * rum.vol, pan: rum.pan });
+  });
   bus.paa('telefonRinger', () => hud.banner('Telefonen ringer — tag røret!', 1800));
   bus.paa('telefonOpkald', (e) => {
     const o = OPKALD[e.opkald];
@@ -610,7 +644,8 @@ function koblHaendelser() {
       viderestil: () => 'Du er blevet stillet videre …',
     }[o.effekt]?.() || '';
     hud.opkaldBoble(e.x, e.y, o.navn, o.tekst, foelge, r);
-    // Røret tages: telefonlyden, og så sekretæren — efter hinanden.
+    // Røret tages: ringningen stopper, så telefonlyden og sekretæren — efter hinanden.
+    if (S.ringLyd) { lyd.stopStemme(); S.ringLyd = null; }
     lyd.afspil('stemme_telefonlyd_til_event', { vol: 0.9, maksSek: 4, vigtig: true });
     lyd.stemme('stemme_sekretaer_lyd', { vigtig: true });
   });
@@ -622,15 +657,17 @@ function koblHaendelser() {
     // Tallet kommer først, når skuddet er afviklet (se taelSkade).
     hud.banner(`FULDTRÆFFER! ${b ? b.navn : ''}`, 1500, 'advarsel');
     visning.kamera.rystelse(0.6, 0);
-    lyd.afspil('brag', { tone: 1.25, vol: 0.9 });
+    // Ingen lyd her: braget kommer med eksplosionen lige efter (med forrang).
     lyd.stemme('stemme_meget_skade', { chance: 0.6 });
   });
 
   // ---- rene lydhændelser. Præsentationen lytter; den skriver aldrig tilbage.
-  bus.paa('hop', () => lyd.afspil('sfx_hop', { vol: 0.8 }));
-  bus.paa('salto', () => lyd.afspil('sfx_salto', { vol: 0.8 }));
+  bus.paa('hop', () => lyd.afspil('hop'));
+  bus.paa('salto', () => lyd.afspil('salto'));
   bus.paa('skade', (e) => {
-    lyd.afspil('skade', { tone: 0.9 + Math.random() * 0.2 });
+    // Et fald lander tungt; COVID hoster; alt andet er et slag.
+    const slags = e.aarsag === 'fald' ? 'tungt_fald' : e.aarsag === 'covid' ? 'covid_host' : 'skade';
+    lyd.afspil(slags, { tone: 0.92 + Math.random() * 0.16 });
     if (S.skudUde) S.skudUde.ramte = true;
     if (e.skade >= 30) lyd.stemme('stemme_meget_skade', { chance: 0.5 });
     else lyd.stemme('stemme_av', { chance: 0.3 });
@@ -644,7 +681,11 @@ function koblHaendelser() {
   });
   bus.paa('staaOver', () => lyd.stemme('stemme_provokation', { chance: 0.6 }));
   bus.paa('kasseSamlet', (e) => {
-    lyd.afspil(e.slags === 'helbred' ? 'sfx_helbred' : 'sfx_kasse', { vol: 0.8 });
+    lyd.afspil(e.slags === 'helbred' ? 'piller' : e.slags === 'vaaben' ? 'vaaben_samlet' : 'kasse_samlet');
+    if (e.slags === 'vaaben') {
+      const b = S.verden.baevere.find((x) => x.id === e.baever);
+      hud.banner(`${b ? b.navn + ': ' : ''}+${e.antal ?? 1} ${VAABEN[e.indhold]?.navn || 'våben'}`, 1800);
+    }
     if (e.slags === 'helbred') {
       const b = S.verden.baevere.find((x) => x.id === e.baever);
       if (b) {
@@ -656,22 +697,98 @@ function koblHaendelser() {
   bus.paa('pillerDukketOp', () => hud.banner('Piller på banen — +50 tålmodighed', 1800));
   bus.paa('printerSprang', () => hud.banner('Printeren gik i stykker — igen!', 1800, 'advarsel'));
   bus.paa('vaabenValgt', (e) => {
-    lyd.afspil('sfx_vaabenskift', { vol: 0.55 });
+    lyd.afspil('vaabenskift');
     // "Tonerkanon!" når den tages frem — ikke oven i kanonlyden ved skuddet.
     if (e.vaaben === 'grenroer') lyd.stemme('stemme_tonerkanon', { chance: 0.5 });
   });
-  bus.paa('bjaelkeSat', () => lyd.afspil('byg'));
   bus.paa('terraenBygget', (e) => {
     // Papiret dumper ned; rampen og skummet bygges. Én lyd, gennem kanalen.
-    if (e.slags === 'papir') lyd.afspil('sfx_landing', { vol: 0.7, tone: 1.15 });
-    else lyd.afspil('byg', { tone: e.slags === 'skum' ? 0.8 : 1 });
+    lyd.afspil(e.slags === 'papir' ? 'papir_land' : e.slags === 'skum' ? 'skum' : 'metal', { vol: e.slags === 'rampe' ? 2 : 1 });
     if (e.slags === 'rampe') hud.banner('Kabelbakken er lagt — gå op ad den', 1400);
   });
-  bus.paa('teleport', () => lyd.afspil('sfx_teleport', { vol: 0.8 }));
-  bus.paa('lunteSat', () => lyd.afspil('klik', { vol: 0.6 }));
-  bus.paa('redskabStart', (e) => lyd.afspil(e.slags === 'bor' ? 'stemme_systemnedbrud' : 'splint', { vol: 0.9 }));
-  bus.paa('klyngeDelt', () => lyd.afspil('kast', { tone: 1.2, vol: 0.8 }));
+  bus.paa('teleport', (e) => {
+    visning.fx.teleport(e.fraX, e.fraY, e.x, e.y);
+    lyd.afspil('teleport', { vol: 1.6 });
+  });
+  bus.paa('teleportAfvist', () => {
+    hud.banner('Fjernsupport kan ikke nå derhen — vælg et andet sted', 1800, 'advarsel');
+    lyd.afspil('teleport_afvist', { vol: 1.5 });
+  });
+  bus.paa('lunteSat', () => lyd.afspil('klik'));
+  bus.paa('redskabStart', (e) => {
+    if (e.slags !== 'bor') return;
+    lyd.afspil('stemme_systemnedbrud', { vol: 0.9 });
+    if (S.verden.baevere.find((x) => x.id === e.baever && erMin(x))) {
+      hud.banner('Styr med piletasterne · mellemrum stopper', 2200);
+    }
+  });
+  bus.paa('klyngeDelt', () => lyd.afspil('inferno_delt'));
+
+  // ---- Stregkodescanneren og Tvangsopdateringen: strålen skal SES.
+  bus.paa('straale', (e) => {
+    const opdatering = e.vaaben === 'daemningsdynamit';
+    if (e.traf && S.skudUde) S.skudUde.ramte = true;
+    visning.fx.straale(e.x0, e.y0, e.x1, e.y1, { traf: e.traf, farve: opdatering ? 'blaa' : 'roed' });
+    if (e.traf && !opdatering) {
+      visning.kamera.rystelse(0.35, 0);
+      visning.fx.pop('BIP!', e.x1, e.y1 + 24, { farve: 'roed', str: 34 });
+    }
+  });
+  bus.paa('opdateringRamt', (e) => {
+    if (S.skudUde) S.skudUde.ramte = true;
+    const b = navnPaa(e.baever);
+    visning.fx.pop('GENSTART!', e.x, e.y + 70, { farve: 'blaa', str: 32 });
+    hud.banner(`${b} skal installere opdateringer — springer næste tur over`, 2600, 'advarsel');
+    lyd.afspil('opdatering_ramt', { vol: 1.8 });
+  });
+  bus.paa('turSprungetOver', (e) => {
+    hud.banner(`${navnPaa(e.baever)} installerer stadig opdateringer … turen springes over`, 2600);
+    lyd.afspil('opdatering_faerdig', { vol: 1.8, vigtig: true });
+  });
+
+  // ---- Klageklask: slaget rammer lidt efter svinget.
+  bus.paa('klask', (e) => {
+    if (!e.maal?.length) return;
+    visning.fx.klask(e.x, e.y, e.retning ?? 1);
+    visning.kamera.rystelse(0.45, 0);
+    lyd.afspil('klask_ramt', { forrang: true });
+    if (S.skudUde) S.skudUde.ramte = true;
+  });
+
+  // ---- Hjemmearbejde: kraftfeltet.
+  bus.paa('skjoldOp', (e) => {
+    visning.fx.skjoldOp(e.x, e.y);
+    hud.banner(`${navnPaa(e.baever)} arbejder hjemmefra — isoleret til næste tur`, 2200);
+    lyd.afspil('skjold_op', { vol: 1.3 });
+  });
+  bus.paa('skjoldBlok', (e) => {
+    visning.fx.skjoldBlok(e.x, e.y);
+    visning.baevere.get(e.baever)?.skjoldRamt();
+    visning.fx.pop('ISOLERET!', e.x, e.y + 62, { farve: 'cyan', str: 26 });
+    if (S.skudUde) S.skudUde.ramte = true;
+    // Kommer blokeringen med en eksplosion, tager braget kanalen i samme tick;
+    // glasklangen kommer derfor lige efter.
+    setTimeout(() => lyd.afspil('skjold_blok'), 420);
+  });
+  bus.paa('skjoldSlut', () => lyd.afspil('skjold_slut'));
+
+  // ---- COVID.
+  bus.paa('covidSky', (e) => {
+    visning.fx.covidSky(e.x, e.y, e.r);
+    const rum = rumlig(e.x, e.y, 2400);
+    lyd.afspil('covid_sky', { vol: 1.2 * (0.5 + 0.5 * rum.vol), pan: rum.pan, forrang: true });
+  });
+  bus.paa('smittet', (e) => {
+    if (S.skudUde) S.skudUde.ramte = true;
+    visning.fx.pop('SMITTET!', e.x, e.y + 64, { farve: 'groen', str: 26 });
+    hud.banner(e.fra != null ? `${navnPaa(e.fra)} smittede ${navnPaa(e.baever)} med COVID`
+      : `${navnPaa(e.baever)} er smittet med COVID`, 2000, 'advarsel');
+    lyd.afspil('covid_host', { vol: 1.5 });
+  });
+  bus.paa('rask', (e) => hud.banner(`${navnPaa(e.baever)} er rask igen`, 1800));
 }
+
+const navnPaa = (id) => S.verden?.baevere.find((x) => x.id === id)?.navn ?? 'Kunden';
 
 const erMin = (b) => !S.erNet || b.ejer === S.pid ||
   (!b.ejer && S.verden.pidPaaHold(S.pid, b.hold));
@@ -726,8 +843,21 @@ function loop(nu) {
  * Projektilet slås op på id hver frame — spejlets objekter kan udskiftes
  * af et snapshot undervejs. */
 const NEDSLAG_HOLD_MS = 1500;
-const RING_RAEKKEVIDDE = 600;        // wu: så tæt skal kamera eller kunde være på telefonen
-const RAKETTER = new Set(['gren', 'stamme']);
+const RING_RAEKKEVIDDE = 1100;       // wu: længere væk end det høres telefonen ikke
+
+/**
+ * Lyd i rummet: hvor højt (0-1) og hvor i stereo en lyd ved (x, y) skal lyde.
+ * Lytteren er kameraet — eller den aktive kunde, hvis den er tættere på.
+ */
+function rumlig(x, y, raekkevidde = RING_RAEKKEVIDDE) {
+  const k = r.kamera.position;
+  const akt = S.verden?.aktivBaever();
+  const d = Math.min(Math.hypot(x - k.x, y - k.y), akt && !akt.doed ? Math.hypot(x - akt.x, y - akt.y) : Infinity);
+  const naer = Math.max(0, 1 - d / raekkevidde);
+  const halv = Math.max(200, (r.kamera.right - r.kamera.left) / 2);
+  return { vol: naer * naer, pan: Math.max(-0.8, Math.min(0.8, (x - k.x) / halv)) };
+}
+const RAKETTER = new Set(['gren']);           // fakturaerne flagrer, de brøler ikke
 
 function foelgSkud(v, vi) {
   const nu = performance.now();
@@ -776,7 +906,7 @@ function taelSkade(v, vi, nu) {
       e.t = { fra: e.vist, til: b.hp, start: nu,
               varighed: Math.min(2200, 900 + (e.vist - b.hp) * 18) };
       hud.skadeTal(b, e.vist - Math.max(0, b.hp), r);
-      lyd.afspil('sfx_ramt', { vol: 0.7 });
+      lyd.afspil('skade', { vol: 0.7 });
       hud.markerRamt(b.id, true);
       vi.baevere.get(b.id)?.ramt?.();
     }
@@ -789,7 +919,7 @@ function taelSkade(v, vi, nu) {
       // Tællerens tik: hvert 3. point, og tonen falder, mens tallet gør.
       if (Math.floor(foer / 3) !== Math.floor(e.vist / 3) && nu - (S.sidsteTik || 0) > 40) {
         S.sidsteTik = nu;
-        lyd.afspil('sfx_tael', { vol: 0.32, tone: 1.25 - 0.45 * blød });
+        lyd.afspil('tael', { tone: 1.25 - 0.45 * blød });
       }
       if (k >= 1) { e.vist = e.t.til; e.t = null; hud.markerRamt(b.id, false); }
     }
@@ -800,11 +930,16 @@ function opdaterVisning(dt, tid) {
   const v = S.verden;
   const vi = visning;
 
-  // Skridtene og fuglene: gang-løkken følger den aktive figur, og en svag
-  // ambience ligger under hele kampen.
+  // Skridtene: ét fodtrin på kontortæppet ad gangen, i takt med gangen
+  // (0,3 s). Gennem den fælles kanal, så de tier, når noget andet lyder.
+  // Og en svag ambience under hele kampen.
   const aktLyd = v.aktivBaever();
-  lyd.loop('gang', !!(S.tilstand === 'spil' && aktLyd && !aktLyd.doed && aktLyd.paaJorden &&
-                      (tast.nede('venstre') || tast.nede('hoejre'))), 0.5);
+  const gaar = !!(S.tilstand === 'spil' && !S.pause && aktLyd && !aktLyd.doed && aktLyd.paaJorden && !aktLyd.graver &&
+                  (tast.nede('venstre') || tast.nede('hoejre')) && !panel.aaben && !S.markoerTilstand);
+  if (gaar && performance.now() - (S.sidsteSkridt || 0) > 300) {
+    S.sidsteSkridt = performance.now();
+    lyd.afspil('fodtrin', { tone: 0.94 + Math.random() * 0.12 });
+  }
   lyd.loop('ambience', S.tilstand === 'spil', 0.12);
   // Løber tiden ud midt i en opladning, slutter opladningen med turen.
   if (S.oplader) {
@@ -844,24 +979,39 @@ function opdaterVisning(dt, tid) {
   vi.projektiler.opdater(v.projektiler);
   vi.genstande.opdater(v.kasser, v.placerede, v.gravsten, v.terraen);
   // Telefonerne ringer i takt med deres animation; tættere på lyder højere.
-  const nuS = performance.now() / 1000, kam = r.kamera.position;
+  const nuS = performance.now() / 1000;
   for (const k of v.kasser) {
     if (k.slags !== 'telefon') continue;
     const ringer = telefonRinger(k.id, nuS);
-    // Ringelyden kun tæt på — når kameraet eller den aktive kunde er nær
-    // telefonen — og højst hvert 10. sekund, ellers ville den kime uafbrudt.
+    // Ringelyden følger afstanden: svag langt væk, højere jo tættere kameraet
+    // eller den aktive kunde kommer — også mens den ringer. Højst hvert 7. s.
+    const rum = rumlig(k.x, k.y);
     if (ringer && !S.ringer?.has(k.id) && S.tilstand === 'spil') {
-      const akt = v.aktivBaever();
-      const afstand = Math.min(Math.hypot(k.x - kam.x, k.y - kam.y),
-                               akt ? Math.hypot(k.x - akt.x, k.y - akt.y) : Infinity);
-      const vol = Math.max(0, 1 - afstand / RING_RAEKKEVIDDE) * 0.7;
-      if (vol > 0.05 && performance.now() - (S.sidsteRing || 0) > 10000) {
-        S.sidsteRing = performance.now();
-        lyd.afspil('stemme_telefonlyd_til_event', { vol, maksSek: 4 });
+      if (rum.vol > 0.02 && performance.now() - (S.sidsteRing || 0) > 7000) {
+        const h = lyd.afspil('stemme_telefonlyd_til_event', { vol: 0.9 * rum.vol, pan: rum.pan, maksSek: 4 });
+        if (h) { S.sidsteRing = performance.now(); S.ringLyd = { h, id: k.id }; }
       }
     }
+    if (S.ringLyd?.id === k.id) lyd.justerLyd(S.ringLyd.h, { vol: 0.9 * rum.vol, pan: rum.pan });
     (S.ringer ||= new Set())[ringer ? 'add' : 'delete'](k.id);
   }
+  // Phishing-minerne bipper langsomt, mens de armerer (ét bip i sekundet,
+  // i takt med tallet på minen), og melder, når de er skarpe. Tæt på lyder
+  // de højere; langt væk høres de ikke.
+  const mineSek = (S.mineSek ||= new Map());
+  for (const p of v.placerede) {
+    if (p.sprite !== 'mine') continue;
+    const sek = mineSekund(p.armerRest || 0), foer = mineSek.get(p.id);
+    mineSek.set(p.id, sek);
+    if (foer === undefined || foer === sek || S.tilstand !== 'spil') continue;
+    const rum = rumlig(p.x, p.y, 900);
+    if (rum.vol < 0.03) continue;
+    lyd.afspil(sek > 0 ? 'mine_bip' : 'mine_armeret', { vol: (sek > 0 ? 1.8 : 2.2) * rum.vol, pan: rum.pan, forrang: true });
+  }
+  // Systemnedbrud: boret summer (støvet fra spidsen kommer i figurløkken).
+  const borer = v.baevere.find((b) => b.graver && !b.doed);
+  const borRum = borer ? rumlig(borer.x, borer.y, 1400) : null;
+  lyd.loop('bor', !!borer && S.tilstand === 'spil', borRum ? 1.1 * (0.3 + 0.7 * borRum.vol) : 0);
   const medGrav = new Set(v.gravsten.map((g) => g.baever));
 
   for (const b of v.baevere) {
@@ -869,11 +1019,13 @@ function opdaterVisning(dt, tid) {
     if (!bv) { bv = lavBaeverView(r.scene, b, b.hold, v.terraen); vi.baevere.set(b.id, bv); }
     b.gaar = b.id === v.tur.baeverId && (tast.nede('venstre') || tast.nede('hoejre'));
     bv.opdater(b, dt, medGrav.has(b.id), !!S.jubler?.has(b.id));
+    const spids = bv.boreSpids();                 // kun mens der bores
+    if (spids) vi.fx.boreStoev(spids.x, spids.y, spids.dx, spids.dy);
   }
 
   // Sigte: den forudsagte bane plus en kraftbue om bæveren.
   const akt = v.aktivBaever();
-  const visSigte = akt && !akt.doed && erMin(akt) &&
+  const visSigte = akt && !akt.doed && !akt.graver && erMin(akt) &&
                    (v.tur.tilstand === TIL.SPILLER_AKTIV || S.oplader);
   if (visSigte) {
     const m = mundingsPunkt(akt);
@@ -905,6 +1057,7 @@ function opdaterVisning(dt, tid) {
     else bv.visVaaben(null);
   }
 
+  ryddMarkoer();
   if (S.markoerTilstand) vi.sigte.visMarkoer(S.markoer.x, S.markoer.y);
   else vi.sigte.skjulMarkoer();
 
@@ -913,6 +1066,26 @@ function opdaterVisning(dt, tid) {
   const tilstandTekst = v.tur.tilstand === TIL.UDSAET ? T.spil.udsaetter : null;
   const aktNu = v.aktivBaever();
   const minTur = !!(aktNu && erMin(aktNu));
+  // Brugte man sidste Hjemmearbejde eller Kabelbakke, står man med et tomt
+  // våben i hånden og turen fortsætter: sig det, én gang.
+  // (Scannerens andet skud er betalt, selv om tallet viser 0 — den tier vi om.)
+  if (minTur && v.tur.tilstand === TIL.SPILLER_AKTIV && !aktNu.graver && v.ammoFor(aktNu.hold, v.valgtVaaben) === 0 &&
+      !(VAABEN[v.valgtVaaben]?.brugPrTur > 1)) {
+    const noegle = `${v.tur.turNr}|${v.valgtVaaben}`;
+    if (S.tomHint !== noegle) {
+      // Vent lidt: først skal bekræftelsen ("arbejder hjemmefra …") kunne læses.
+      if (S.tomHintNoegle !== noegle) { S.tomHintNoegle = noegle; S.tomHintFra = performance.now(); }
+      else if (performance.now() - S.tomHintFra > 2500) {
+        S.tomHint = noegle;
+        hud.banner(`${VAABEN[v.valgtVaaben]?.navn || 'Våbnet'} er brugt — vælg et andet (1–0 eller Tab)`, 2200);
+      }
+    }
+  }
+  // Arsenalet hører til ens egen tur: det lukker, når turen er forbi.
+  if (panel.aaben) {
+    if (!minTur || aktNu.doed || ![TIL.SPILLER_AKTIV, TIL.TUR_START].includes(v.tur.tilstand)) panel.luk();
+    else panel.opdater(v, aktNu);
+  }
   hud.opdater(v, S.pid, tilstandTekst, S.oplader, lokalKraft(), minTur);
 }
 
@@ -926,14 +1099,34 @@ function opdaterVisning(dt, tid) {
  * kantudløsning at en aktiv spiller sender 2-10 beskeder i sekundet og en
  * passiv nul.
  */
+/** Markørtilstand gælder kun i ens egen tur, med et markørvåben i hånden.
+ *  Ryddes her, ét sted — ellers kunne den hænge ved og låse piletasterne. */
+function markoerGaelder() {
+  const v = S.verden, akt = v?.aktivBaever();
+  return !!(akt && erMin(akt) && v.tur.tilstand === TIL.SPILLER_AKTIV && v.vaabenNu()?.sigte === 'markoer');
+}
+function ryddMarkoer() {
+  if (!S.markoerTilstand || markoerGaelder()) return;
+  S.markoerTilstand = false;
+  S._markoerIdx = null;
+  sendInput();
+}
+
+/** De holdte taster, som simulationen skal have (null = intet må sendes). */
+function holdNu() {
+  if (S.pause || panel.aaben) return 0;
+  // I markørtilstand flytter piletasterne markøren — ikke også kunden.
+  const pile = K.VENSTRE | K.HOEJRE | K.SIGT_OP | K.SIGT_NED;
+  return S.markoerTilstand ? tast.bitmaske() & ~pile : tast.bitmaske();
+}
+
 function sendInput() {
   const v = S.verden;
   if (!v || S.tilstand !== 'spil') return;
-  const spaerret = S.pause || panel.aaben;
   const akt = v.aktivBaever();
   if (!akt || !erMin(akt)) return;
 
-  const b = spaerret ? 0 : tast.bitmaske();
+  const b = holdNu();
   if (b !== S.sidsteBitmaske) {
     S.sidsteBitmaske = b;
     afsend({ k: 'hold', seq: S.seq++, b });
@@ -953,10 +1146,17 @@ tast.paaTryk((handling, e) => {
     return;
   }
   if (S.tilstand !== 'spil') { menu.tast(e); return; }
+  // Under pause hører tasterne til pausemenuen — kun Esc lukker den igen.
+  // Og det tastetryk, der lige lukkede den (Enter på Fortsæt, Esc), må ikke
+  // også hoppe, lade op eller pause igen.
+  if (S.pause && handling !== 'pause') return;
+  if (S.pauseSlut && performance.now() - S.pauseSlut < 200) return;
   const v = S.verden;
   const akt = v?.aktivBaever();
 
-  if (handling === 'lad' && akt && erMin(akt) && !S.oplader &&
+  // Borer kunden, stopper mellemrummet boret — ingen opladning.
+  if (handling === 'lad' && akt && erMin(akt) && akt.graver) S.stopBor = true;
+  else if (handling === 'lad' && akt && erMin(akt) && !S.oplader && !panel.aaben &&
       v.tur.tilstand === TIL.SPILLER_AKTIV) {
     S.oplader = true;
     S.opladFra = performance.now();
@@ -964,6 +1164,7 @@ tast.paaTryk((handling, e) => {
   sendInput();
 
   if (e.code === 'Slash' || e.code === 'F1' || e.key === '?') {
+    if (panel.aaben) panel.luk();
     hjaelp.skiftOversigt();
     return;
   }
@@ -974,9 +1175,11 @@ tast.paaTryk((handling, e) => {
 
   switch (handling) {
     case 'pause':
-      if (S.markoerTilstand) { S.markoerTilstand = false; return; }
+      if (S.markoerTilstand) { S.markoerTilstand = false; sendInput(); return; }
       S.pause = !S.pause;
-      S.pause ? menu.vis('pause') : menu.skjul();
+      if (S.pause) { S.oplader = false; lyd.ladelyd(null); menu.vis('pause'); }
+      else { S.pauseSlut = performance.now(); menu.skjul(); }
+      sendInput();
       return;
     case 'debug': visning?.debug.skift(); return;
     case 'lydFra': {
@@ -991,18 +1194,21 @@ tast.paaTryk((handling, e) => {
     case 'zoomInd': visning?.kamera.zoomInd(); return;
     case 'zoomUd': visning?.kamera.zoomUd(); return;
     case 'panel':
-      if (akt && erMin(akt)) panel.aabn(v, akt);
+      aabnArsenal();
       return;
     case 'staaOver':
       if (akt && erMin(akt) && confirm(T.spil.bekraeftStaaOver)) {
         afsend({ k: 'handling', seq: S.seq++, h: 'staaOver' });
       }
       return;
-    case 'hop':
-      if (akt && erMin(akt)) afsend({ k: 'hold', seq: S.seq++, b: tast.bitmaske() | K.HOP });
-      return;
-    case 'salto':
-      if (akt && erMin(akt)) afsend({ k: 'hold', seq: S.seq++, b: tast.bitmaske() | K.SALTO });
+    case 'hop': case 'salto':
+      // Samme maskering som sendInput; simulationen rydder hop-bitten selv
+      // efter ét tick, så dens holdte taster bagefter er lig sidsteBitmaske.
+      if (akt && erMin(akt) && !panel.aaben) {
+        const b = holdNu();
+        S.sidsteBitmaske = b;
+        afsend({ k: 'hold', seq: S.seq++, b: b | (handling === 'hop' ? K.HOP : K.SALTO) });
+      }
       return;
     case 'lunte':
       if (akt && erMin(akt)) {
@@ -1017,20 +1223,25 @@ tast.paaTryk((handling, e) => {
 
   if (handling && handling.startsWith('favorit')) {
     const i = +handling.slice(7);
-    const id = S.profil.favoritter[i];
-    if (id && akt && erMin(akt)) afsend({ k: 'handling', seq: S.seq++, h: 'vaelgVaaben', id });
+    if (i < 10) vaelgVaaben(S.profil.favoritter[i]);
+    if (panel.aaben) panel.luk();
   }
 });
 
 tast.paaSlip((handling) => {
   sendInput();
-  if (handling !== 'lad' || S.tilstand !== 'spil') return;
+  if (handling !== 'lad' || S.tilstand !== 'spil' || S.pause) return;
   const v = S.verden;
   const akt = v?.aktivBaever();
   // Opladningen ejes LOKALT. Spejlverdenen kender den ikke — den tilstand
   // findes kun hos værten — og kraftbjælken skal desuden reagere uden at
   // vente på en netværkstur/retur.
-  if (!akt || !erMin(akt) || !S.oplader) return;
+  if (S.stopBor) {
+    S.stopBor = false;
+    if (akt && erMin(akt)) afsend({ k: 'handling', seq: S.seq++, h: 'affyr', kraft: 0 });
+    return;
+  }
+  if (!akt || !erMin(akt) || !S.oplader || panel.aaben) return;
   // Aflæs kraften FØR oplader-flaget ryddes — lokalKraft() svarer 0, når
   // flaget er nede. Med den gamle rækkefølge affyredes ALT med minimumskraft,
   // mens sigtelinjen viste den fulde bue.
@@ -1044,12 +1255,14 @@ tast.paaSlip((handling) => {
     S.markoerTilstand = true;
     S.markoer.x = akt.x + akt.retning * 260;
     S.markoer.y = akt.y + 120;
+    sendInput();
     return;
   }
   if (S.markoerTilstand) {
     afsend({ k: 'handling', seq: S.seq++, h: 'markoer',
              x: S.markoer.x, y: S.markoer.y, retning: S.markoer.retning });
     S.markoerTilstand = false;
+    sendInput();
   }
   afsend({ k: 'handling', seq: S.seq++, h: 'affyr', kraft });
 });
@@ -1062,28 +1275,71 @@ function lokalKraft() {
   return Math.min(1, (performance.now() - S.opladFra) / msFuld);
 }
 
-panel.paaValg((id) => {
+/** Vælg et våben fra bjælken, arsenalet eller tasterne. Et opbrugt våben
+ *  siger det i stedet for at gøre ingenting. */
+function vaelgVaaben(id) {
+  const v = S.verden;
+  const akt = v?.aktivBaever();
+  if (!id || !VAABEN[id] || !akt || !erMin(akt)) return;
+  // Scannerens andet skud er betalt, selv om tallet viser 0.
+  const betalt = S.betalt && S.betalt.turNr === v.tur.turNr && S.betalt.vaaben === id;
+  if (v.ammoFor(akt.hold, id) === 0 && !betalt) {
+    hud.banner(`${VAABEN[id].navn} er opbrugt — find en forsyningskasse`, 1600);
+    lyd.afspil('teleport_afvist');
+    return;
+  }
   afsend({ k: 'handling', seq: S.seq++, h: 'vaelgVaaben', id });
+}
+
+/** Åbn arsenalet (siden). Tururet står stille, mens man kigger (højst 5 s). */
+function aabnArsenal() {
+  const v = S.verden;
+  const akt = v?.aktivBaever();
+  if (!akt || !erMin(akt) || akt.doed || panel.aaben) return;
+  const tilstand = v.tur.tilstand;
+  if (![TIL.SPILLER_AKTIV, TIL.TUR_START].includes(tilstand)) return;   // ellers lukkede den straks igen
+  // En halv opladning må ikke overleve arsenalet og affyre bagefter.
+  if (S.oplader) { S.oplader = false; lyd.ladelyd(null); }
+  panel.aabn(v, akt);
+  hud.saetArsenalAaben(true);
+  // Uret står stille — også hvis skuffen åbnes, mens turen starter.
+  afsend({ k: 'handling', seq: S.seq++, h: 'panel', aaben: true });
+  sendInput();                                 // kunden står stille, mens man vælger
+}
+
+panel.paaValg((id) => vaelgVaaben(id));
+panel.paaLuk(() => {
+  hud?.saetArsenalAaben(false);
+  const akt = S.verden?.aktivBaever();
+  if (S.tilstand === 'spil' && akt && erMin(akt)) afsend({ k: 'handling', seq: S.seq++, h: 'panel', aaben: false });
+  sendInput();                                 // holdte piletaster gælder igen
 });
-panel.paaBind((id) => {
-  const f = S.profil.favoritter;
-  const tom = f.findIndex((x) => !x);
-  if (tom >= 0) f[tom] = id; else f[f.length - 1] = id;
+/** Shift+tal i arsenalet lægger våbnet på den plads i bjælken. */
+panel.paaBind((id, plads) => {
+  const f = S.profil.favoritter;              // samme array som S.verden.favoritter
+  if (!(plads >= 0 && plads < 10)) return;
+  while (f.length < 10) f.push(null);
+  // Byt plads: det våben, der lå der, rykker hen, hvor det nye kom fra.
+  const fra = f.indexOf(id), ud = f[plads];
+  if (fra >= 0) f[fra] = ud ?? null;
+  f[plads] = id;
+  if (S.verden) S.verden.favoritter = f;       // skuffens tastmærker læser herfra
   gemProfil(S.profil);
+  menu.saetProfil(S.profil);                   // menuen har sin egen kopi
   hud.byggFavoritter(f);
 });
 
+/** Q/E går gennem bjælkens våben (dem med ammunition). */
 function cyklVaaben(d) {
   const v = S.verden;
   const akt = v?.aktivBaever();
   if (!akt || !erMin(akt)) return;
-  const w = v.vaabenNu();
-  const samme = Object.values(VAABEN).filter((x) => x.kategori === w.kategori &&
-                                                    v.ammoFor(akt.hold, x.id) !== 0);
-  if (!samme.length) return;
-  const i = samme.findIndex((x) => x.id === v.valgtVaaben);
-  const n = samme[((i + d) % samme.length + samme.length) % samme.length];
-  afsend({ k: 'handling', seq: S.seq++, h: 'vaelgVaaben', id: n.id });
+  const betalt = (id) => S.betalt && S.betalt.turNr === v.tur.turNr && S.betalt.vaaben === id;
+  const bar = S.profil.favoritter.slice(0, 10).filter((id) => VAABEN[id] && (v.ammoFor(akt.hold, id) !== 0 || betalt(id)));
+  if (!bar.length) return;
+  const i = bar.indexOf(v.valgtVaaben);
+  const n = i < 0 ? (d > 0 ? bar[0] : bar[bar.length - 1]) : bar[((i + d) % bar.length + bar.length) % bar.length];
+  afsend({ k: 'handling', seq: S.seq++, h: 'vaelgVaaben', id: n });
 }
 
 /** Uden dette spring skal man flytte markøren 2000 wu med piletaster, og
@@ -1095,11 +1351,14 @@ function springMarkoer(d) {
   const fjender = v.baevere.filter((b) => !b.doed && b.hold !== akt.hold)
                            .sort((a, b) => a.x - b.x);
   if (!fjender.length) return;
-  S.markoerTilstand = true;
   S._markoerIdx = ((S._markoerIdx ?? -1) + d + fjender.length) % fjender.length;
   const m = fjender[S._markoerIdx];
+  // Uden markørvåben (eller i en andens tur) kigger T bare på fjenden.
+  if (!markoerGaelder()) { visning?.kamera.fokus(m); return; }
+  S.markoerTilstand = true;
   S.markoer.x = m.x; S.markoer.y = m.y + 20;
   S.markoer.retning = m.x > akt.x ? 1 : -1;
+  sendInput();
 }
 
 /* markørflytning med piletaster, når markørtilstand er aktiv */

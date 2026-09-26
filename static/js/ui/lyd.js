@@ -15,14 +15,50 @@
 'use strict';
 
 const STI = '/lyd';
+/*
+ * Kontorlydene fra "400 Sounds Pack" (vaerktoej/kontorlyde.py) afløser de
+ * gamle 8-bit-effekter. Hver gruppe har en eller flere varianter,
+ * k_<gruppe>_1 … _n, og kaldes med gruppens navn: afspil('fodtrin') vælger
+ * en tilfældig variant — aldrig den samme to gange i træk.
+ */
+const GRUPPER = {
+  fodtrin: 4, hop: 2, salto: 2, kast: 2, landing: 1, tungt_fald: 1, vaabenskift: 3,
+  papir_kast: 1, papir_land: 2, metal: 1, skum: 2, mine_laeg: 1, mine_bip: 1, mine_armeret: 1,
+  opdatering_skud: 1, opdatering_ramt: 1, opdatering_faerdig: 1, bor: 1, skjold_op: 2,
+  skjold_blok: 2, skjold_slut: 1, teleport: 1, teleport_afvist: 1, kasse_samlet: 2,
+  vaaben_samlet: 2, kasse_falder: 1, piller: 1, skade: 3, klask_ramt: 1, covid_host: 2,
+  covid_sky: 1, plask: 1, sort_hul: 1, klik: 2, tael: 3, oplad: 1, fuld_kraft: 1,
+  intro_slam: 1, nedtael: 2, kamp_start: 1, du_vandt: 1, tabt: 1, inferno_delt: 1,
+};
+// Gruppernes egen lydstyrke, målt af værktøjet, så de sidder godt sammen
+// (fodtrin og tik svagt, slag og fald kraftigt). Kaldets vol ganges på.
+const GRUPPE_VOL = {
+  fodtrin: 0.3, hop: 0.5, salto: 0.57, kast: 0.46, landing: 0.83, tungt_fald: 0.92,
+  vaabenskift: 0.46, papir_kast: 0.6, papir_land: 1, metal: 0.3, skum: 1, mine_laeg: 0.46,
+  mine_bip: 0.3, mine_armeret: 0.3, opdatering_skud: 0.3, opdatering_ramt: 0.3,
+  opdatering_faerdig: 0.3, bor: 0.4, skjold_op: 0.54, skjold_blok: 0.64, skjold_slut: 0.75,
+  teleport: 0.33, teleport_afvist: 0.36, kasse_samlet: 0.69, vaaben_samlet: 0.66,
+  kasse_falder: 0.53, piller: 0.75, skade: 0.93, klask_ramt: 0.85, covid_host: 0.44,
+  covid_sky: 0.38, plask: 0.82, sort_hul: 0.32, klik: 0.47, tael: 0.3, oplad: 0.3,
+  fuld_kraft: 0.3, intro_slam: 0.92, nedtael: 0.56, kamp_start: 0.3, du_vandt: 0.39,
+  tabt: 0.71, inferno_delt: 0.77,
+};
+const sidstValgt = new Map();
+
+/** Gruppenavn -> en af gruppens filer (en fil, der ikke er en gruppe, er sig selv). */
+function variant(navn) {
+  const n = GRUPPER[navn];
+  if (!n) return navn;
+  let i = Math.floor(Math.random() * n);
+  if (n > 1 && i === sidstValgt.get(navn)) i = (i + 1) % n;
+  sidstValgt.set(navn, i);
+  return `k_${navn}_${i + 1}`;
+}
+
 const NAVNE = [
-  'skud', 'kast', 'brag', 'nedslag', 'skade', 'landing',
-  'klik', 'sejr', 'byg', 'splint', 'fald', 'gang', 'ambience',
-  // Effekter fra "Sound effects Pack 2" og "Snake's Authentic Gun Sounds",
-  // klippet og normaliseret af vaerktoej/lydpakker.py.
-  'sfx_oplad', 'sfx_fuld_kraft', 'sfx_hop', 'sfx_salto', 'sfx_tael', 'sfx_ramt',
-  'sfx_vaabenskift', 'sfx_kasse', 'sfx_helbred', 'sfx_sort_hul', 'sfx_teleport',
-  'sfx_intro_slam', 'sfx_nedtael', 'sfx_kamp_start', 'sfx_landing', 'sfx_du_vandt', 'sfx_tabt',
+  // Eksplosionerne og baggrunden (Kenney.nl).
+  'brag', 'nedslag', 'sejr', 'ambience',
+  ...Object.entries(GRUPPER).flatMap(([g, n]) => Array.from({ length: n }, (_, i) => `k_${g}_${i + 1}`)),
   // Kundernes stemmer — brugerens egne optagelser, klippet og normaliseret
   // af vaerktoej/kundelyde.py.
   'stemme_av', 'stemme_meget_skade', 'stemme_doed', 'stemme_faldt_i_vandet',
@@ -110,8 +146,8 @@ if (sikrKontekst()) {
  * Musikken og den svage baggrundsstemning er baggrund og ligger udenfor.
  */
 let optagetTil = 0;                  // ctx.currentTime, hvor kanalen er fri igen
-let nuvaerende = null;               // den kilde, der spiller lige nu
-const koe = [];                      // vigtige lyde, der venter (højst 3)
+let nuvaerende = null;               // den lyd, der spiller lige nu: { kilde, g, p, vigtig, forrang, start }
+const koe = [];                      // lyde, der venter: højst 3 vigtige + ét brag, der udløber
 let koeTimer = 0;
 
 export const kanalFri = () => !!ctx && ctx.currentTime >= optagetTil && !lade;
@@ -123,11 +159,22 @@ function naesteIKoe() {
     koeTimer = setTimeout(naesteIKoe, Math.max(30, (optagetTil - ctx.currentTime) * 1000 + 60));
     return;
   }
+  // Et brag, der har ventet for længe, hører ikke længere til sin eksplosion.
+  while (koe.length && koe[0].udloeb && ctx.currentTime > koe[0].udloeb) koe.shift();
   const n = koe.shift();
-  spil(n.navn, n.opt);
+  if (n) spil(n.navn, { ...n.opt, vigtig: n.vigtig });
+  if (koe.length) naesteIKoe();
 }
 
-function spil(navn, { vol = 1, tone = 1, maksSek = 0, stemme = false } = {}) {
+/** Stereoplacering: -1 venstre … 1 højre (ældre Safari har ingen panner). */
+function lavPanner(pan) {
+  if (!ctx.createStereoPanner) return null;
+  const p = ctx.createStereoPanner();
+  p.pan.value = Math.max(-1, Math.min(1, pan));
+  return p;
+}
+
+function spil(navn, { vol = 1, tone = 1, maksSek = 0, stemme = false, pan = 0, vigtig = false, forrang = false } = {}) {
   const b = buffere.get(navn);
   if (!b) return false;
   const kilde = ctx.createBufferSource();
@@ -135,7 +182,9 @@ function spil(navn, { vol = 1, tone = 1, maksSek = 0, stemme = false } = {}) {
   kilde.playbackRate.value = tone;
   const g = ctx.createGain();
   g.gain.value = vol;
-  kilde.connect(g); g.connect(master);
+  const p = pan ? lavPanner(pan) : null;
+  kilde.connect(g);
+  if (p) { g.connect(p); p.connect(master); } else g.connect(master);
   kilde.start();
   let varighed = b.duration / tone;
   // maksSek: lange lyde (faxen, telefonen) tones ud i stedet for at køre til ende.
@@ -147,26 +196,82 @@ function spil(navn, { vol = 1, tone = 1, maksSek = 0, stemme = false } = {}) {
     varighed = maksSek;
   }
   optagetTil = ctx.currentTime + varighed;
-  nuvaerende = kilde;
+  const lydNu = { kilde, g, p, vigtig, forrang, start: ctx.currentTime, maksSek };
+  nuvaerende = lydNu;
   kilde.onended = () => {
-    if (nuvaerende === kilde) nuvaerende = null;
+    if (nuvaerende === lydNu) nuvaerende = null;
     if (stemme) stilleTil = ctx.currentTime + PAUSE_S;
     naesteIKoe();
   };
-  return true;
+  return lydNu;
+}
+
+/** Tag kanalen fra det, der spiller: en hurtig fade (40 ms), så intet klikker. */
+function afbryd() {
+  const n = nuvaerende;
+  nuvaerende = null;
+  optagetTil = ctx.currentTime;
+  if (!n) return;
+  const t = ctx.currentTime;
+  try {
+    n.g.gain.cancelScheduledValues(t);
+    n.g.gain.setValueAtTime(n.g.gain.value, t);
+    n.g.gain.linearRampToValueAtTime(0, t + 0.04);
+    n.kilde.stop(t + 0.05);
+  } catch { /* allerede stoppet */ }
+}
+
+/**
+ * Juster en lyd, mens den spiller (telefonen, der kommer nærmere). h er det,
+ * afspil() returnerede; en lyd, der er slut, ignoreres.
+ */
+export function justerLyd(h, { vol, pan } = {}) {
+  if (!h || !ctx || h !== nuvaerende) return;
+  const t = ctx.currentTime;
+  const udtoning = h.maksSek ? h.start + h.maksSek - 0.6 : Infinity;
+  if (vol !== undefined && t < udtoning) {
+    // Det nye niveau erstatter den planlagte kurve — og udtoningen lægges
+    // på igen fra det niveau, ellers sprang lyden tilbage ved udtoningen.
+    h.g.gain.cancelScheduledValues(t);
+    h.g.gain.setTargetAtTime(Math.max(0, vol), t, 0.08);
+    if (udtoning < Infinity) h.g.gain.setTargetAtTime(0, udtoning, 0.15);
+  }
+  if (pan !== undefined && h.p) h.p.pan.setTargetAtTime(Math.max(-1, Math.min(1, pan)), t, 0.08);
 }
 
 /**
  * Afspil en lyd — men kun, hvis kanalen er fri. vol er relativ (0-1), tone
- * ganger tonehøjden. vigtig: vent i kø i stedet for at blive sprunget over.
+ * ganger tonehøjden, pan placerer lyden i stereo. vigtig: vent i kø i stedet
+ * for at blive sprunget over.
+ *
+ * forrang (eksplosioner): lyden TAGER kanalen fra det, der spiller — typisk
+ * affyringslyden, som ellers overdøvede nedslaget, så eksplosionerne var
+ * tavse. Stadig kun én lyd ad gangen: den gamle tones ud på 40 ms. En vigtig
+ * lyd (døden, nedtællingen) afbrydes dog ikke; så venter braget i køen. Og
+ * kommer flere brag inden for 0,15 s (klynger, fakturaregn), høres det første.
  */
-export function afspil(navn, { vol = 1, tone = 1, maksSek = 0, vigtig = false } = {}) {
+export function afspil(navn, { vol = 1, tone = 1, maksSek = 0, vigtig = false, forrang = false, pan = 0 } = {}) {
+  vol *= GRUPPE_VOL[navn] ?? 1;
+  navn = variant(navn);
   if (!buffere.get(navn) || !ctx || ctx.state !== 'running' || volumen <= 0) return false;
   if (!kanalFri()) {
-    if (vigtig && koe.length < 3) { koe.push({ navn, opt: { vol, tone, maksSek } }); naesteIKoe(); }
+    const n = nuvaerende;
+    if (forrang && !lade && n && !n.vigtig && !(n.forrang && ctx.currentTime - n.start < 0.15)) {
+      afbryd();
+      return spil(navn, { vol, tone, maksSek, pan, forrang });
+    }
+    if (vigtig && koe.filter((x) => x.vigtig).length < 3) {
+      koe.push({ navn, vigtig: true, opt: { vol, tone, maksSek, pan, forrang } });
+      naesteIKoe();
+    } else if (forrang && n?.vigtig && !koe.some((x) => x.udloeb)) {
+      // Et brag under en vigtig replik venter højst 0,35 s — og tager aldrig
+      // en af de vigtige pladser.
+      koe.push({ navn, vigtig: false, udloeb: ctx.currentTime + 0.35, opt: { vol, tone, maksSek, pan, forrang } });
+      naesteIKoe();
+    }
     return false;
   }
-  return spil(navn, { vol, tone, maksSek });
+  return spil(navn, { vol, tone, maksSek, pan, vigtig, forrang });
 }
 
 /*
@@ -182,10 +287,14 @@ export function stemme(navn, { chance = 1, vol = 1, vigtig = false } = {}) {
   if (!buffere.get(navn) || !ctx || ctx.state !== 'running' || volumen <= 0) return false;
   if (!vigtig && (Math.random() > chance || ctx.currentTime < stilleTil)) return false;
   if (!kanalFri()) {
-    if (vigtig && koe.length < 3) { koe.push({ navn, opt: { vol, stemme: true } }); naesteIKoe(); }
+    if (vigtig && koe.filter((x) => x.vigtig).length < 3) {
+      koe.push({ navn, vigtig: true, opt: { vol, stemme: true } });
+      naesteIKoe();
+    }
     return false;
   }
-  return spil(navn, { vol, stemme: true });
+  // vigtig følger med: ellers kunne et brag med forrang afbryde dødsreplikken.
+  return spil(navn, { vol, stemme: true, vigtig });
 }
 
 /** Stop det, der spiller, og tøm køen — alt skal være stille. */
@@ -193,9 +302,9 @@ export function stopStemme() {
   koe.length = 0;
   clearTimeout(koeTimer);
   if (ctx) optagetTil = ctx.currentTime;
-  const k = nuvaerende;
+  const n = nuvaerende;
   nuvaerende = null;
-  try { k?.stop(); } catch { /* allerede stoppet */ }
+  try { n?.kilde.stop(); } catch { /* allerede stoppet */ }
 }
 
 export const talerNogen = () => !kanalFri();
@@ -204,6 +313,7 @@ export const talerNogen = () => !kanalFri();
 const loekker = new Map();
 
 export function loop(navn, til, vol = 1) {
+  vol *= GRUPPE_VOL[navn] ?? 1;
   if (navn !== 'ambience' && ctx && !kanalFri()) vol = 0;      // én lyd ad gangen
   const koerer = loekker.get(navn);
   if (til === !!koerer) {
@@ -219,7 +329,8 @@ export function loop(navn, til, vol = 1) {
     loekker.delete(navn);
     return;
   }
-  const b = buffere.get(navn);
+  // En gruppe løkkes altid på sin første variant (boret har kun én).
+  const b = buffere.get(GRUPPER[navn] ? `k_${navn}_1` : navn);
   if (!b || !ctx || ctx.state !== 'running' || volumen <= 0) return;
   const kilde = ctx.createBufferSource();
   kilde.buffer = b;
@@ -260,7 +371,7 @@ export function ladelyd(kraft01, opladSek = 1.05) {
     return;
   }
   if (!lade) {
-    const b = buffere.get('sfx_oplad');
+    const b = buffere.get(variant('oplad'));
     // Spiller der noget, venter opladelyden — og starter så dér, hvor
     // opladningen er nået til, så stigningen stadig passer til kraften.
     if (!b || volumen <= 0 || ctx.currentTime < optagetTil) return;
@@ -268,13 +379,13 @@ export function ladelyd(kraft01, opladSek = 1.05) {
     kilde.buffer = b;
     const rate = Math.max(0.4, Math.min(1.2, b.duration / opladSek));
     kilde.playbackRate.value = rate;
-    const g = ctx.createGain(); g.gain.value = 0.55;
+    const g = ctx.createGain(); g.gain.value = 1.5 * GRUPPE_VOL.oplad;
     kilde.connect(g); g.connect(master);
     kilde.start(0, Math.min(b.duration * 0.95, kraft01 * b.duration));
     lade = { kilde, g, fuld: kraft01 >= 1 };
   }
   // Dinget ved fuld kraft hører til opladningen, der ejer kanalen.
-  if (kraft01 >= 1 && !lade.fuld) { lade.fuld = true; spil('sfx_fuld_kraft', { vol: 0.7 }); }
+  if (kraft01 >= 1 && !lade.fuld) { lade.fuld = true; spil(variant('fuld_kraft'), { vol: 1.5 * GRUPPE_VOL.fuld_kraft }); }
 }
 
 /*

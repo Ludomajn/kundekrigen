@@ -8,8 +8,7 @@
 'use strict';
 
 import { hent } from './assets.js';
-import { tegnFigur, standardUdseende, indlaesGrafik } from './figur_view.js';
-import { lavRng } from '../core/rng.js';
+import { tegnFigur, indlaesGrafik } from './figur_view.js';
 
 export async function malMenuScene(W = 1600, H = 900) {
   await indlaesGrafik();
@@ -51,11 +50,11 @@ export async function malMenuScene(W = 1600, H = 900) {
     g.drawImage(img, W * fx - str / 2, jordY - h + 4, str, h);
   }
 
-  // Fire figurer, én fra hvert hold. De to til højre vender mod midten.
-  const rng = lavRng(0xf19a);
-  const folk = [[0.09, 0], [0.24, 3], [0.76, 2], [0.91, 1]];
-  for (const [fx, hold] of folk) {
-    tegnFigur(g, hold, standardUdseende(rng), W * fx, jordY + 4, 130, fx > 0.5 ? -1 : 1);
+  // Klinikkernes folk: Højhaven til venstre, Mogensen til højre, vendt mod
+  // hinanden. Skrankepaven og Dr. Hansen mod praktikanten og Dr. Jan.
+  const folk = [[0.09, 0, 16], [0.24, 0, 18], [0.76, 1, 21], [0.91, 1, 19]];
+  for (const [fx, hold, figur] of folk) {
+    tegnFigur(g, hold, { v: 5, figur }, W * fx, jordY + 4, 130, fx > 0.5 ? -1 : 1);
   }
 
   return c;

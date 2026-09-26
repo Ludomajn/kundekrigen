@@ -9,13 +9,35 @@
  */
 'use strict';
 
-import { T, esc, mmss, VEJR_NAVN } from './tekst.js';
+import { T, esc, mmss, VEJR_NAVN, brydOrd } from './tekst.js';
 import { HOLD, HOLD_ORDEN, holdFarve } from '../render/palette.js';
 import { VAABEN } from '../sim/weapons.js';
-import { FAVORIT_LABELS } from './keyboard.js';
+import { FAVORIT_LABELS, ANTAL_FAVORITTER } from './keyboard.js';
 import { ikonHTML } from './vaabenikoner.js';
 import { MAKS_HP } from '../sim/entities.js';
 import { HZ } from '../core/tick.js';
+
+/** Det, der kan ligge i arsenalskuffen: alt undtagen meta-valgene. */
+const ARSENAL = Object.values(VAABEN).filter((w) => w.kategori !== 'meta');
+
+/** Ammo som badge: ×3, et gråt 0, eller ∞ for meta-valgene. */
+const ammoTekst = (a) => (a < 0 ? T.spil.ubegraenset : a === 0 ? '0' : `×${a}`);
+
+/* Statusikoner i holdlisten. Tegnet i currentColor; farven sidder i CSS. */
+const STATUS_IKON = {
+  skjold: '<path d="M6 .9l4.6 1.7v3.2c0 2.8-2 4.7-4.6 5.4C3.4 10.5 1.4 8.6 1.4 5.8V2.6z"/>',
+  opdaterer: '<path d="M9.9 6.4A4 4 0 1 1 8.6 3" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/><path d="M10.9 1.2v3.6H7.3z"/>',
+  smittet: '<circle cx="6" cy="6" r="2.9"/><path d="M6 .8v1.8M6 9.4v1.8M.8 6h1.8M9.4 6h1.8M2.3 2.3l1.3 1.3M8.4 8.4l1.3 1.3M9.7 2.3L8.4 3.6M3.6 8.4L2.3 9.7" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/>',
+};
+const statusIkon = (slags, tekst) =>
+  `<svg class="hb-ikon ${slags}" viewBox="0 0 12 12" fill="currentColor" role="img" aria-label="${esc(tekst)}"><title>${esc(tekst)}</title>${STATUS_IKON[slags]}</svg>`;
+
+function statusIkoner(x) {
+  if (x.doed) return '';
+  return (x.skjold ? statusIkon('skjold', T.spil.status.skjold) : '') +
+         (x.springOver ? statusIkon('opdaterer', T.spil.status.springOver) : '') +
+         (x.smittet > 0 ? statusIkon('smittet', T.spil.status.smittet) : '');
+}
 
 export function lavHud(rod, r) {
   rod.innerHTML = `
@@ -34,8 +56,18 @@ export function lavHud(rod, r) {
     <div class="hud-bund" id="hudBund">
       <div class="hud-vaaben" id="hudVaaben"></div>
       <div class="kraftbar hide" id="hudKraft"><i></i></div>
-      <div class="favoritbar" id="hudFavorit"></div>
+      <div class="favoritbar" id="hudFavorit" role="toolbar" aria-label="Våbenbjælke"></div>
     </div>
+
+    <button class="hud-arsenal skjult" id="hudArsenal" type="button" tabindex="-1"
+            aria-expanded="false" aria-controls="panel" title="${esc(T.spil.flereVaabenTitel)}">
+      <svg class="ha-chevron" viewBox="0 0 12 20" aria-hidden="true">
+        <path d="M3.5 3.5l6 6.5-6 6.5" fill="none" stroke="currentColor" stroke-width="2.6"
+              stroke-linecap="round" stroke-linejoin="round"/></svg>
+      <span class="ha-tekst">${T.spil.flereVaaben}</span>
+      <span class="ha-antal num" id="hudArsenalAntal">0</span>
+      <kbd class="ha-tast">Tab</kbd>
+    </button>
 
     <div class="etiketter" id="hudEtiketter"></div>
     <div class="banner hide" id="hudBanner"></div>
@@ -47,7 +79,7 @@ export function lavHud(rod, r) {
     aktiv: $('hudAktiv'), tur: $('hudTur'), kamp: $('hudKamp'), sudden: $('hudSudden'),
     vind: $('hudVind'), hold: $('hudHold'), vaaben: $('hudVaaben'),
     bund: $('hudBund'), kraft: $('hudKraft'), favorit: $('hudFavorit'), etiketter: $('hudEtiketter'),
-    banner: $('hudBanner'), net: $('hudNet'),
+    banner: $('hudBanner'), net: $('hudNet'), arsenal: $('hudArsenal'), arsenalAntal: $('hudArsenalAntal'),
   };
 
   const etiketPulje = new Map();
@@ -55,26 +87,107 @@ export function lavHud(rod, r) {
   // afviklet, og tælles så ned (main.js styrer det); indtil da er det b.hp.
   let visHp = (b) => b.hp;
   const ramte = new Set();
-  let favoritter = [];
   let sidsteVaaben = null, sidsteVind = null, sidsteHoldSignatur = '';
 
-  function byggFavoritter(liste, holdIdx, ammo) {
-    favoritter = liste;
-    el.favorit.innerHTML = liste.map((id, i) => {
+  // --- våbenbjælken: altid ti pladser (1–0), også når nogle er tomme, så
+  // tallene står fast. pladser[i] = { id, knap, ammo } — id er null for et hul.
+  let pladser = [];
+  let paaBjaelken = new Set();
+  let sidsteBjaelke = '';
+  let sidsteTur = '';
+  let vedVaelg = () => {};
+  let vedArsenal = () => {};
+
+  function byggFavoritter(liste) {
+    const l = Array.isArray(liste) ? liste : [];
+    const ids = Array.from({ length: ANTAL_FAVORITTER }, (_, i) => (VAABEN[l[i]] ? l[i] : null));
+    paaBjaelken = new Set(ids.filter(Boolean));
+    el.favorit.innerHTML = ids.map((id, i) => {
+      const tast = `<span class="favtast">${FAVORIT_LABELS[i]}</span>`;
+      if (!id) {
+        return `<div class="fav fav-plads" aria-hidden="true" title="${esc(T.spil.tomPladsTitel(FAVORIT_LABELS[i]))}">
+          ${tast}<span class="favplads-ikon"></span><span class="favnavn">${T.spil.tomPlads}</span>
+        </div>`;
+      }
       const w = VAABEN[id];
-      if (!w) return '';
-      return `<button class="fav" data-vaaben="${esc(id)}" title="${esc(w.navn)} — ${esc(w.hjaelp || '')}">
-        <span class="favtast">${FAVORIT_LABELS[i]}</span>
+      return `<button class="fav" type="button" tabindex="-1" data-vaaben="${esc(id)}"
+                title="${esc(w.navn)} (${FAVORIT_LABELS[i]}) — ${esc(w.hjaelp || '')}">
+        ${tast}
+        <span class="favammo num"></span>
         ${ikonHTML(w, 'favikon')}
-        <span class="favnavn">${esc(w.navn)}</span>
-        <span class="favammo num" data-ammo="${esc(id)}"></span>
+        <span class="favnavn">${brydOrd(w.navn)}</span>
       </button>`;
     }).join('');
+    pladser = [...el.favorit.children].map((knap, i) => ({ id: ids[i], knap, ammo: knap.querySelector('.favammo') }));
+    // Tal, markering og skuffens tæller skrives ved næste frame.
+    sidsteBjaelke = '';
+    sidsteVaaben = null;
   }
+
+  /** Ammo på ALLE pladser hver frame — kasser og telefonen giver ammo midt i
+   *  turen, også til våben man ikke har i hånden. DOM'en skrives kun, når
+   *  noget faktisk har ændret sig. */
+  function opdaterBjaelke(v, b) {
+    const tab = (b && v.hold?.[b.hold]?.ammo) || null;
+    const a = (id) => (tab ? (tab[id] ?? 0) : 0);
+    let andre = 0;
+    for (const w of ARSENAL) if (!paaBjaelken.has(w.id) && a(w.id) !== 0) andre++;
+    const iSkuffen = !!VAABEN[v.valgtVaaben] && VAABEN[v.valgtVaaben].kategori !== 'meta' &&
+                     !paaBjaelken.has(v.valgtVaaben);
+    let sig = `${b ? b.hold : '-'}|${v.valgtVaaben}|${andre}`;
+    for (const p of pladser) sig += p.id ? `|${a(p.id)}` : '|';
+    if (sig === sidsteBjaelke) return;
+    sidsteBjaelke = sig;
+    for (const p of pladser) {
+      if (!p.id) continue;
+      const n = a(p.id);
+      p.ammo.textContent = ammoTekst(n);
+      p.knap.classList.toggle('tom', n === 0);
+      p.knap.classList.toggle('valgt', p.id === v.valgtVaaben);
+    }
+    el.arsenalAntal.textContent = andre;
+    el.arsenalAntal.classList.toggle('nul', andre === 0);
+    // Våbnet i hånden ligger ikke på bjælken: håndtaget viser, hvor det er.
+    el.arsenal.classList.toggle('har-valgt', iSkuffen);
+  }
+
+  // Et klik på en plads er det samme som tallet. Tomme pladser og våben uden
+  // ammo gør ingenting — de ryster bare på hovedet.
+  el.favorit.addEventListener('click', (e) => {
+    const k = e.target.closest('.fav[data-vaaben]');
+    if (!k) return;
+    k.blur();
+    if (k.classList.contains('tom')) { k.classList.remove('nej'); void k.offsetWidth; k.classList.add('nej'); return; }
+    vedVaelg(k.dataset.vaaben);
+  });
+  el.favorit.addEventListener('animationend', (e) => e.target.classList?.remove('nej'));
+  el.arsenal.addEventListener('click', () => { el.arsenal.blur(); vedArsenal(); });
+  el.arsenal.addEventListener('animationend', (e) => {
+    if (e.animationName === 'arsenalPuf') el.arsenal.classList.remove('puf');
+  });
+
+  // Bjælkens højde bestemmer, hvor netstatus, hjælpeboblerne og skuffen skal
+  // ligge. Den MÅLES (--bund-h, uskaleret), så de følger med, når bjælken
+  // ændrer sig — i stedet for faste tal, der passer til én udgave af den.
+  const bundMaaler = typeof ResizeObserver === 'function' ? new ResizeObserver(() => {
+    if (!el.bund.isConnected) return;
+    document.documentElement.style.setProperty('--bund-h', `${el.bund.offsetHeight}px`);
+  }) : null;
+  bundMaaler?.observe(el.bund);
 
   return {
     el,
     byggFavoritter,
+
+    /** Klik på en plads i bjælken: cb(id). */
+    paaVaelgVaaben(cb) { vedVaelg = cb; },
+    /** Klik på håndtaget "Flere våben". */
+    paaArsenal(cb) { vedArsenal = cb; },
+    /** Håndtagets tilstand følger skuffen. */
+    saetArsenalAaben(aaben) {
+      el.arsenal.setAttribute('aria-expanded', aaben ? 'true' : 'false');
+      el.arsenal.classList.toggle('aaben', !!aaben);
+    },
 
     /** Kaldes hver frame. Holder sig til at skrive tekstnoder der har ændret sig. */
     /** minTur: den lokale spiller styrer den aktive kunde. Ellers er man
@@ -83,6 +196,9 @@ export function lavHud(rod, r) {
     opdater(v, egenPid, tilstandTekst, oplader = false, kraft = 0, minTur = true) {
       const b = v.aktivBaever();
       el.bund.classList.toggle('tilskuer', !minTur);
+      // Også på roden: arsenalskuffen (#panel) er en søster til #hud og skjules
+      // i CSS ud fra den, præcis som bjælken.
+      rod.classList.toggle('hud-tilskuer', !minTur);
       const hold = b ? holdFarve(b.hold) : null;
 
       // --- aktiv bæver
@@ -138,7 +254,8 @@ export function lavHud(rod, r) {
       //      handler om lige nu.
       //   2. MINE bævere skal være til at finde uden at lede.
       //   3. Alle andre er kontekst.
-      const sig = v.baevere.map((x) => `${x.id}:${visHp(x)}:${x.doed && visHp(x) <= 0 ? 1 : 0}`).join(',')
+      const sig = v.baevere.map((x) => `${x.id}:${visHp(x)}:${x.doed && visHp(x) <= 0 ? 1 : 0}` +
+                                       `:${x.skjold ? 1 : 0}${x.springOver ? 1 : 0}${x.smittet > 0 ? 1 : 0}`).join(',')
                 + `|${v.tur.baeverId}|${egenPid}`;
       if (sig !== sidsteHoldSignatur) {
         sidsteHoldSignatur = sig;
@@ -170,6 +287,7 @@ export function lavHud(rod, r) {
                 return `<div class="hbaever ${x.doed ? 'doed' : ''} ${erAktiv ? 'aktiv' : ''} ${mit(x) ? 'egen' : ''}">
                   <span class="hb-markoer">${erAktiv ? '<svg viewBox="0 0 64 40"><use href="#i-arrow"/></svg>' : ''}</span>
                   <span class="hbnavn">${esc(x.navn)}</span>
+                  <span class="hb-status">${statusIkoner(x)}</span>
                   <span class="hbbar"><i style="width:${Math.min(100, Math.max(0, visHp(x)))}%"></i></span>
                   <span class="hb-hp num">${Math.max(0, visHp(x))}</span>
                 </div>`;
@@ -188,18 +306,19 @@ export function lavHud(rod, r) {
           ${!minTur && b ? `<div class="vtilskuer">${esc(b.navn)} har</div>` : ''}
           <div class="vnavn">${ikonHTML(w, 'vikon')}${esc(w.navn)}</div>
           <div class="vmeta">
-            <span>${T.spil.ammo}: <b class="num">${ammo < 0 ? T.spil.ubegraenset : ammo}</b></span>
+            <span class="${ammo === 0 ? 'vtom' : ''}">${T.spil.ammo}: <b class="num">${ammo < 0 ? T.spil.ubegraenset : ammo}</b></span>
             ${w.lunte ? `<span>${T.spil.lunte}: <b class="num">${v.valgtLunte}s</b></span>` : ''}
           </div>` : '';
-        if (b) {
-          for (const n of el.favorit.querySelectorAll('[data-ammo]')) {
-            const a = v.ammoFor(b.hold, n.dataset.ammo);
-            n.textContent = a < 0 ? '' : a;
-            n.parentElement.classList.toggle('tom', a === 0);
-            n.parentElement.classList.toggle('valgt', n.dataset.ammo === v.valgtVaaben);
-          }
-        }
       }
+
+      // --- våbenbjælken og håndtaget til resten af arsenalet
+      opdaterBjaelke(v, b);
+      const kanAabne = minTur && !!b && !b.doed;
+      el.arsenal.classList.toggle('skjult', !kanAabne);
+      // Et lille puf i håndtaget, når ens tur begynder: "der er mere herinde".
+      const tur = kanAabne ? `${b.id}|${v.tur.turNr ?? ''}` : '';
+      if (tur && tur !== sidsteTur && !el.arsenal.classList.contains('aaben')) el.arsenal.classList.add('puf');
+      sidsteTur = tur;
 
       // --- opladningsbar. Måles lokalt, så bjælken reagerer med det samme
       // og ikke først når værtens tilstand er nået hjem igen.
@@ -328,11 +447,33 @@ export function lavHud(rod, r) {
       setTimeout(() => n.remove(), 1700);
     },
 
+    /** Et banner ad gangen. Kommer et nyt, mens det forrige kun har stået
+     *  kort (flere meddelelser i samme tick, fx ved turskiftet), venter det
+     *  i en lille kø i stedet for at overskrive det usete. */
     banner(tekst, ms = 2200, klasse = '') {
-      el.banner.className = `banner ${klasse}`;
-      el.banner.textContent = tekst;
-      clearTimeout(el.banner._t);
-      el.banner._t = setTimeout(() => el.banner.classList.add('hide'), ms);
+      const nu = performance.now();
+      const b = el.banner;
+      b._koe ||= [];
+      if (b._vist && nu - b._vist < 700 && !b.classList.contains('hide')) {
+        if (b._tekst !== tekst && !b._koe.some((x) => x.tekst === tekst) && b._koe.length < 3) {
+          b._koe.push({ tekst, ms, klasse });
+        }
+        return;
+      }
+      const vis = (t, varighed, k) => {
+        b.className = `banner ${k}`;
+        b.textContent = t;
+        b._tekst = t;
+        b._vist = performance.now();
+        clearTimeout(b._t);
+        // Venter der noget, får det aktuelle mindst 1,6 s, så det kan læses.
+        b._t = setTimeout(function naeste() {
+          const n = b._koe.shift();
+          if (n) vis(n.tekst, n.ms, n.klasse);
+          else b.classList.add('hide');
+        }, b._koe.length ? Math.min(varighed, 1600) : varighed);
+      };
+      vis(tekst, ms, klasse);
     },
 
     net(tekst, vis = true) {
@@ -340,6 +481,6 @@ export function lavHud(rod, r) {
       el.net.classList.toggle('hide', !vis || !tekst);
     },
 
-    ryd() { rod.innerHTML = ''; etiketPulje.clear(); },
+    ryd() { bundMaaler?.disconnect(); rod.innerHTML = ''; etiketPulje.clear(); },
   };
 }

@@ -18,7 +18,7 @@
 import { tegnFejlvindue } from './fejl40.js';
 
 import { lavRng, fbm1, fbm2, hash2 } from '../core/rng.js';
-import { LUFT, FJELD } from '../sim/terrain.js';
+import { LUFT, FJELD, MUR } from '../sim/terrain.js';
 
 export const KANT = '#1E1610';
 
@@ -197,6 +197,9 @@ export function bagTerraenPynt(terraen, froe, vandNiveau) {
       const v = maske[i];
       if (v === LUFT) { luft[x] = siden[x] < 0 ? luft[x] + 1 : 1; siden[x] = -1; continue; }
       const sd = siden[x] = siden[x] < 0 ? 0 : siden[x] + 1;
+      // Murværk (fortene): intet græs, og jorden lige under muren heller
+      // ikke. Selve murstenene tegner terrænshaderen (terrain_view.js).
+      if (v === MUR) { graes[x] = 0; continue; }
 
       if (sd === 0) {
         graes[x] = luft[x] >= 40 ? 1 : 0;
@@ -289,10 +292,12 @@ function placerBegravet(g, t, froe, vandNiveau, tyk) {
 
     // Helt inde i massen: centrum og en ring rundt om skal være fast, og der
     // skal være jord et godt stykke over, så tingen aldrig rammer græsset.
-    let ok = t.fast(x, y) && t.fast(x, y + R + 38);
+    // Kun i jord: en kampesten midt i en mur ville se malet på ud.
+    const jord = (px, py) => { const m = t.hent(px, py); return m !== LUFT && m !== MUR; };
+    let ok = jord(x, y) && jord(x, y + R + 38);
     for (let k = 0; ok && k < 12; k++) {
       const v = (k / 12) * Math.PI * 2;
-      ok = t.fast(x + Math.cos(v) * (R + 10), y + Math.sin(v) * (R + 10));
+      ok = jord(x + Math.cos(v) * (R + 10), y + Math.sin(v) * (R + 10));
     }
     if (!ok) continue;
 
@@ -910,6 +915,13 @@ const HV_B = 256, HV_H = 128;
 
 function hvFelt(g, farve, sti) { g.fillStyle = farve; sti(); g.fill(); }
 
+/* Faste punkter i tegningerne (lærredets pixels), som visningen skal kende:
+ * bombens midte og radius (den drejer om kuglen, ikke om lunten) og luntens
+ * glødende ende, hvor gnisten sidder. */
+export const TEGNE_PUNKTER = {
+  bombe: { midt: [118, 73], r: 42, lunte: [176, 19] },
+};
+
 export const HAANDVAABEN = {
   granat(g) {
     const cx = 128, cy = 72;
@@ -984,12 +996,12 @@ export const HAANDVAABEN = {
     hvFelt(g, '#3A424A', () => { g.beginPath(); g.roundRect(4, 24, 24, 80, 8); });
     hvFelt(g, '#6B737B', () => { g.beginPath(); g.roundRect(126, 54, 70, 20, 6); });
     hvFelt(g, '#8B939A', () => { g.beginPath(); g.moveTo(196, 50); g.lineTo(250, 64); g.lineTo(196, 78); g.closePath(); });
-  },
-  bjaelke(g) {                              // stålbjælke båret i hænderne
-    hvFelt(g, '#E8543F', () => { g.beginPath(); g.roundRect(8, 48, 240, 32, 4); });
-    hvFelt(g, '#C74634', () => { g.beginPath(); g.roundRect(8, 66, 240, 14, [0, 0, 4, 4]); });
-    g.fillStyle = '#9E3526';
-    for (let x = 30; x < 240; x += 40) { g.beginPath(); g.arc(x, 64, 5, 0, Math.PI * 2); g.fill(); }
+    // Snoningen på borespidsen, så den ser ud til at dreje.
+    g.strokeStyle = '#5C6670'; g.lineWidth = 3; g.lineCap = 'round';
+    for (const x of [204, 216, 228]) {
+      const h = (250 - x) * 0.26;
+      g.beginPath(); g.moveTo(x, 64 - h); g.lineTo(x + 7, 64 + h); g.stroke();
+    }
   },
   fjernbetjening(g) {                       // gangtunnel: teleporter
     const cx = 128, cy = 70;
@@ -1134,15 +1146,139 @@ export const HAANDVAABEN = {
     g.strokeStyle = '#3A424A'; g.lineWidth = 6; g.lineCap = 'round';
     g.beginPath(); g.moveTo(14, 64); g.quadraticCurveTo(0, 90, 10, 120); g.stroke();
   },
-  serverrack(g) {                           // serverrack (platformen)
-    hvFelt(g, '#3A424A', () => { g.beginPath(); g.roundRect(8, 40, 240, 48, 5); });
-    hvFelt(g, '#2A3036', () => { g.beginPath(); g.roundRect(8, 70, 240, 18, [0, 0, 5, 5]); });
-    g.fillStyle = '#5C6670';
-    for (let x = 18; x < 240; x += 56) { g.beginPath(); g.roundRect(x, 48, 46, 16, 3); g.fill(); }
-    for (let x = 22; x < 240; x += 56) {
-      hvFelt(g, '#7DC06A', () => { g.beginPath(); g.arc(x, 76, 3.5, 0, Math.PI * 2); });
-      hvFelt(g, '#FFD86F', () => { g.beginPath(); g.arc(x + 10, 76, 3.5, 0, Math.PI * 2); });
+  bombe(g) {                                // Datalæk-bomben: en stor, rund bombe fuld af data
+    const [cx, cy] = TEGNE_PUNKTER.bombe.midt, r = TEGNE_PUNKTER.bombe.r;
+    const [tx, ty] = TEGNE_PUNKTER.bombe.lunte;
+    const kugle = () => { g.beginPath(); g.arc(cx, cy, r, 0, Math.PI * 2); };
+    // Kuglen: mørk rand nederst til højre, lysere krop og et blankt højlys.
+    hvFelt(g, '#1B2025', kugle);
+    g.save(); kugle(); g.clip();
+    hvFelt(g, '#313A42', () => { g.beginPath(); g.arc(cx - 7, cy - 8, r - 3, 0, Math.PI * 2); });
+    hvFelt(g, '#3E4852', () => { g.beginPath(); g.arc(cx - 15, cy - 16, r - 16, 0, Math.PI * 2); });
+    // Data, der siver ud: grønne nuller og ettaller på overfladen.
+    g.fillStyle = 'rgba(125,220,106,.8)'; g.font = '800 11px Menlo, Consolas, monospace';
+    g.textAlign = 'center'; g.textBaseline = 'middle';
+    for (const [x, y, s] of [[cx + 14, cy - 27, '1011'], [cx - 13, cy + 28, '0110'], [cx + 22, cy + 22, '01']]) {
+      g.fillText(s, x, y);
     }
+    // Mærkaten tværs over: gul som en advarsel, med DATA i sort.
+    g.save(); g.translate(cx, cy + 3); g.rotate(-0.2);
+    hvFelt(g, '#FFD86F', () => { g.beginPath(); g.rect(-r - 4, -12, r * 2 + 8, 24); });
+    hvFelt(g, '#E0A93A', () => { g.beginPath(); g.rect(-r - 4, 6, r * 2 + 8, 6); });
+    g.fillStyle = '#1E1610'; g.font = '900 19px Poppins, Calibri, sans-serif';
+    g.fillText('DATA', 0, -1);
+    g.restore();
+    g.restore();
+    hvFelt(g, 'rgba(255,255,255,.55)', () => { g.beginPath(); g.ellipse(cx - 20, cy - 23, 11, 6, -0.7, 0, Math.PI * 2); });
+    hvFelt(g, 'rgba(255,255,255,.8)', () => { g.beginPath(); g.arc(cx - 29, cy - 12, 3, 0, Math.PI * 2); });
+    // Tændhætten sidder skråt oppe til højre og peger væk fra midten.
+    const v = -0.88, hx = cx + Math.cos(v) * (r - 3), hy = cy + Math.sin(v) * (r - 3);
+    g.save(); g.translate(hx, hy); g.rotate(v + Math.PI / 2);
+    hvFelt(g, '#8E9196', () => { g.beginPath(); g.roundRect(-10, -12, 20, 16, 4); });
+    hvFelt(g, '#6E7176', () => { g.beginPath(); g.roundRect(2, -12, 8, 16, [0, 4, 4, 0]); });
+    hvFelt(g, '#B5BBC1', () => { g.beginPath(); g.roundRect(-12, -15, 24, 6, 3); });
+    g.restore();
+    // Lunten: en snoet snor fra hætten ud til den glødende ende.
+    const lx = hx + Math.cos(v) * 12, ly = hy + Math.sin(v) * 12;
+    const lunte = () => { g.beginPath(); g.moveTo(lx, ly); g.quadraticCurveTo(lx + 4, ty + 2, tx, ty); };
+    g.lineCap = 'round';
+    g.strokeStyle = '#B98A52'; g.lineWidth = 6; lunte(); g.stroke();
+    g.strokeStyle = '#7A5A30'; g.lineWidth = 2; g.setLineDash([3, 4]); lunte(); g.stroke(); g.setLineDash([]);
+    hvFelt(g, '#F08A2C', () => { g.beginPath(); g.arc(tx, ty, 5, 0, Math.PI * 2); });
+    hvFelt(g, '#FFE9A0', () => { g.beginPath(); g.arc(tx, ty, 2.6, 0, Math.PI * 2); });
+  },
+  faktura(g) {                              // kvartalsopkrævningen: en forfalden faktura (stående A4)
+    const x0 = 92, y0 = 14, w = 72, h = 100, fold = 16;
+    const ark = () => { g.beginPath(); g.moveTo(x0 + 3, y0); g.lineTo(x0 + w - fold, y0); g.lineTo(x0 + w, y0 + fold);
+      g.lineTo(x0 + w, y0 + h - 3); g.quadraticCurveTo(x0 + w, y0 + h, x0 + w - 3, y0 + h);
+      g.lineTo(x0 + 3, y0 + h); g.quadraticCurveTo(x0, y0 + h, x0, y0 + h - 3);
+      g.lineTo(x0, y0 + 3); g.quadraticCurveTo(x0, y0, x0 + 3, y0); g.closePath(); };
+    hvFelt(g, '#FFFFFF', ark);
+    g.save(); ark(); g.clip();
+    hvFelt(g, '#E6E9EC', () => { g.beginPath(); g.rect(x0, y0 + h - 12, w, 12); });
+    // Blå overskrift med FAKTURA.
+    hvFelt(g, '#2E6DB4', () => { g.beginPath(); g.rect(x0, y0, w, 19); });
+    g.fillStyle = '#FFFFFF'; g.font = '900 9px Poppins, Calibri, sans-serif';
+    g.textAlign = 'left'; g.textBaseline = 'middle'; g.fillText('FAKTURA', x0 + 5, y0 + 10);
+    g.restore();
+    hvFelt(g, '#C9D0D6', () => { g.beginPath(); g.moveTo(x0 + w - fold, y0); g.lineTo(x0 + w - fold, y0 + fold);
+      g.lineTo(x0 + w, y0 + fold); g.closePath(); });
+    // Linjer med poster og beløb.
+    g.fillStyle = '#C9CED3';
+    for (let i = 0; i < 4; i++) {
+      const y = y0 + 27 + i * 8;
+      g.fillRect(x0 + 7, y, 30 - (i % 2) * 8, 3);
+      g.fillRect(x0 + w - 21, y, 14, 3);
+    }
+    hvFelt(g, '#3A424A', () => { g.beginPath(); g.rect(x0 + 7, y0 + 64, w - 14, 2); });
+    g.fillStyle = '#1E1610'; g.font = '900 10px Poppins, Calibri, sans-serif';
+    g.textAlign = 'right'; g.fillText('9.999 kr', x0 + w - 7, y0 + 76);
+    // Det røde stempel: FORFALDEN.
+    g.save(); g.translate(x0 + w / 2, y0 + 50); g.rotate(-0.32);
+    g.globalAlpha = 0.9;
+    g.strokeStyle = '#D8402C'; g.lineWidth = 2.5;
+    g.beginPath(); g.roundRect(-32, -8, 64, 16, 3); g.stroke();
+    g.fillStyle = '#D8402C'; g.font = '900 8px Poppins, Calibri, sans-serif';
+    g.textAlign = 'center'; g.fillText('FORFALDEN', 0, 0.5);
+    g.restore();
+  },
+  laptop(g) {                               // hjemmearbejde: den bærbare med et hus på skærmen
+    const cx = 128;
+    // Skærmen: mørk ramme, lyseblå skærm med et hus og et wifi-signal.
+    hvFelt(g, '#2A3036', () => { g.beginPath(); g.roundRect(cx - 54, 14, 108, 72, 8); });
+    hvFelt(g, '#6FB4CE', () => { g.beginPath(); g.roundRect(cx - 47, 21, 94, 58, 4); });
+    hvFelt(g, '#8FCBE0', () => { g.beginPath(); g.moveTo(cx - 47, 21); g.lineTo(cx + 5, 21); g.lineTo(cx - 25, 79); g.lineTo(cx - 47, 79); g.closePath(); });
+    const hx = cx - 4, hy = 58;
+    hvFelt(g, '#FFFFFF', () => { g.beginPath(); g.moveTo(hx - 22, hy - 4); g.lineTo(hx, hy - 24); g.lineTo(hx + 22, hy - 4); g.closePath(); });
+    hvFelt(g, '#FFFFFF', () => { g.beginPath(); g.rect(hx - 16, hy - 6, 32, 20); });
+    hvFelt(g, '#E8543F', () => { g.beginPath(); g.roundRect(hx - 5, hy + 2, 10, 12, [4, 4, 0, 0]); });
+    hvFelt(g, '#FFD86F', () => { g.beginPath(); g.rect(hx + 7, hy - 2, 6, 6); });
+    g.strokeStyle = '#FFFFFF'; g.lineWidth = 3; g.lineCap = 'round';
+    for (const rr of [6, 11]) { g.beginPath(); g.arc(cx + 30, 40, rr, -Math.PI * 0.8, -Math.PI * 0.2); g.stroke(); }
+    hvFelt(g, '#FFFFFF', () => { g.beginPath(); g.arc(cx + 30, 40, 2.4, 0, Math.PI * 2); });
+    // Hængslet og tastaturdelen i perspektiv.
+    hvFelt(g, '#1E2328', () => { g.beginPath(); g.roundRect(cx - 50, 85, 100, 5, 2); });
+    hvFelt(g, '#B5BBC1', () => { g.beginPath(); g.moveTo(cx - 58, 90); g.lineTo(cx + 58, 90);
+      g.lineTo(cx + 74, 108); g.lineTo(cx - 74, 108); g.closePath(); });
+    hvFelt(g, '#8B939A', () => { g.beginPath(); g.roundRect(cx - 74, 106, 148, 7, [0, 0, 4, 4]); });
+    g.fillStyle = '#6E767D';
+    for (let r = 0; r < 2; r++) {
+      const y = 93 + r * 6, ind = 56 + r * 5;
+      for (let k = 0; k < 9; k++) g.fillRect(cx - ind + 4 + k * (ind * 2 - 8) / 9, y, (ind * 2 - 8) / 9 - 3, 3.5);
+    }
+    hvFelt(g, '#9AA2A9', () => { g.beginPath(); g.roundRect(cx - 14, 102, 28, 3, 1.5); });
+  },
+  virus(g) {                                // COVID: en grøn, pigget og meget sur virus
+    const cx = 128, cy = 64, r = 30;
+    // Piggene: stilk og knop hele vejen rundt.
+    for (let i = 0; i < 12; i++) {
+      const v = i / 12 * Math.PI * 2 + 0.13;
+      const c = Math.cos(v), s = Math.sin(v);
+      g.strokeStyle = '#2E8C4A'; g.lineWidth = 6; g.lineCap = 'round';
+      g.beginPath(); g.moveTo(cx + c * (r - 4), cy + s * (r - 4)); g.lineTo(cx + c * (r + 10), cy + s * (r + 10)); g.stroke();
+      hvFelt(g, '#2E8C4A', () => { g.beginPath(); g.arc(cx + c * (r + 13), cy + s * (r + 13), 7, 0, Math.PI * 2); });
+      hvFelt(g, '#A6EB7C', () => { g.beginPath(); g.arc(cx + c * (r + 13) - 1.2, cy + s * (r + 13) - 1.2, 4.6, 0, Math.PI * 2); });
+    }
+    const krop = () => { g.beginPath(); g.arc(cx, cy, r, 0, Math.PI * 2); };
+    hvFelt(g, '#2E8C4A', krop);
+    g.save(); krop(); g.clip();
+    hvFelt(g, '#58B947', () => { g.beginPath(); g.arc(cx - 5, cy - 5, r - 2, 0, Math.PI * 2); });
+    hvFelt(g, '#7DDC6A', () => { g.beginPath(); g.arc(cx - 11, cy - 12, r - 14, 0, Math.PI * 2); });
+    g.fillStyle = 'rgba(30,90,40,.45)';
+    for (const [x, y, rr] of [[cx + 16, cy + 12, 5], [cx - 18, cy + 15, 3.5], [cx + 19, cy - 13, 3]]) {
+      g.beginPath(); g.arc(x, y, rr, 0, Math.PI * 2); g.fill();
+    }
+    g.restore();
+    // Et surt ansigt: vrede bryn, hvide øjne og et skævt grin.
+    for (const sx of [-1, 1]) {
+      hvFelt(g, '#FFFFFF', () => { g.beginPath(); g.ellipse(cx + sx * 10, cy - 2, 6.5, 7.5, 0, 0, Math.PI * 2); });
+      hvFelt(g, '#1E1610', () => { g.beginPath(); g.arc(cx + sx * 10 - sx * 1.5, cy, 3.4, 0, Math.PI * 2); });
+      hvFelt(g, '#1E1610', () => { g.beginPath(); g.moveTo(cx + sx * 3, cy - 9); g.lineTo(cx + sx * 18, cy - 15);
+        g.lineTo(cx + sx * 18, cy - 11); g.lineTo(cx + sx * 4, cy - 5); g.closePath(); });
+    }
+    g.strokeStyle = '#1E1610'; g.lineWidth = 3; g.lineCap = 'round';
+    g.beginPath(); g.moveTo(cx - 9, cy + 15); g.quadraticCurveTo(cx + 1, cy + 9, cx + 11, cy + 14); g.stroke();
+    hvFelt(g, 'rgba(255,255,255,.55)', () => { g.beginPath(); g.ellipse(cx - 15, cy - 19, 7, 4, -0.6, 0, Math.PI * 2); });
   },
   tonerpatron(g) {                          // tonerkanonens projektil
     hvFelt(g, '#2A3036', () => { g.beginPath(); g.roundRect(30, 44, 170, 40, 12); });
@@ -1224,34 +1360,40 @@ export function lavHaandvaaben(navn) {
 /*
  * Hvor stor hver ting er i VERDEN, målt på tegningens faktiske indhold
  * (den største side, i wu). Figuren er ~46 wu høj (~1,75 m), så 1 wu er
- * ~4 cm, og en hånd er ~6 wu. Ting er overdrevet 1,3–2 gange i forhold til
+ * ~4 cm, og en hånd er ~6 wu. Våben er overdrevet 2–3 gange i forhold til
  * virkeligheden — en rigtig mus på 3 wu kan ikke ses — men de står i
  * forhold til hinanden og til figuren. Holdt, kastet og udlagt bruger den
  * SAMME størrelse: musen, man kaster, er den, man holdt.
  */
 export const VAABEN_STR = {
-  bazooka: 27,         // tonerkanon båret på skulderen
-  scanner: 12,         // stregkodescanner med pistolgreb
+  // Våbnene er skruet ~1,4 gange op (2026-09-27): de skal kunne ses og
+  // føles store ved siden af figuren og landskabet. Rekvisitterne (telefon,
+  // printer) er uændrede.
+  bazooka: 36,         // tonerkanon båret på skulderen
+  scanner: 17,         // stregkodescanner med pistolgreb
   loddekolbe: 13,
-  bor: 13,             // systemnedbrud: boremaskine
+  bor: 19,             // systemnedbrud: boremaskine
   mus: 8,
-  tastatur: 13,
-  tast: 4,             // tastaturbombens løse taster
-  opdatering: 11,      // tvangsopdatering
-  mail: 9,             // phishing-mine
-  mail_alarm: 9,
-  ringbind: 12,
-  serverrack: 20,
-  papirbunke: 10,      // bunke A4, holdt og kastet
-  kabelbakke: 22,
-  skumpistol: 13,      // byggeskum
-  fjernbetjening: 9,   // fjernsupport
+  tastatur: 19,
+  tast: 6,             // tastaturbombens løse taster
+  opdatering: 16,      // tvangsopdatering
+  mail: 13,            // phishing-mine (udlagt er den altid 27 wu, se fx.js)
+  mail_alarm: 13,
+  ringbind: 18,
+  bombe: 32,           // Datalæk-bomben: stor og rund, lunten medregnet
+  faktura: 19,         // kvartalsopkrævningens faktura (stående A4)
+  laptop: 19,          // hjemmearbejde
+  virus: 14,           // COVID
+  papirbunke: 15,      // bunke A4, holdt og kastet
+  kabelbakke: 30,
+  skumpistol: 19,      // byggeskum
+  fjernbetjening: 13,  // fjernsupport
   bordtelefon: 16,     // telefonen, der ringer
   printer: 26,         // printeren (tidligere tønden), der springer
   printer_alarm: 26,
   radio: 9,            // faxregnen bestilles over radio
-  flag: 20,
-  tonerpatron: 8,      // tonerkanonens projektil
+  flag: 26,
+  tonerpatron: 12,     // tonerkanonens projektil
   faxmaskine: 14,      // faxregnens projektil
 };
 

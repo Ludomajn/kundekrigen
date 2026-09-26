@@ -1,10 +1,15 @@
-"""Kundekrigen — de 16 tegneseriekunder til spillet.
+"""Kundekrigen — de 22 tegneseriekunder til spillet.
 
-Kilden er brugerens figurer i Assets/Cartoon Characters/Kundekrigen (bygget
-på rgsdev's Cartoon Character Generator): hver kunde har 20 frames à 512x512
-i "No hands" (kun kroppen) og "Only hands" (hænder + sværd/pistol).
+Kilderne ligger i Assets/Cartoon Characters (bygget på rgsdev's Cartoon
+Character Generator), hver kunde med 20 frames à 512x512 i "No hands" (kun
+kroppen) og "Only hands" (kun hænderne):
 
-Spillet har sine egne IT-våben, så sværd og pistol kasseres. Værktøjet:
+  Kundekrigen v2/NN_Navn                          01-16  de almindelige kunder
+  Kundekrigen klinikker/<klinik>/N_Navn           17-22  klinikkernes personale
+
+Figurerne har bare hænder (spillet lægger selv IT-våbnet i hånden). Ældre
+kilder med sværd/pistol virker stadig: så findes hænderne ud fra hudfarven,
+og våbnet kasseres. Værktøjet:
   1. Beskærer alle kropsframes med ÉT fælles udsnit (så fodpunktet er det
      samme for alle), skalerer ned og pakker de 20 i et atlas pr. kunde.
   2. Finder hudfarven (farver i hænderne, der også findes i ansigtet) og
@@ -15,7 +20,7 @@ Spillet har sine egne IT-våben, så sværd og pistol kasseres. Værktøjet:
 Ud:  static/grafik/tegneserie/NN.webp, NN_haand.webp
      static/js/render/tegneserie_rig.js   (genereret — ret ikke i hånden)
 
-Kræver Pillow og NumPy:  python3 vaerktoej/tegneseriekunder.py [kildemappe]
+Kræver Pillow og NumPy:  python3 vaerktoej/tegneseriekunder.py [assets-mappe]
 """
 import json, os, sys
 from collections import Counter, deque
@@ -25,13 +30,18 @@ from PIL import Image
 
 HER = os.path.dirname(os.path.abspath(__file__))
 ROD = os.path.dirname(HER)
-KILDE = sys.argv[1] if len(sys.argv) > 1 else os.path.join(ROD, '..', 'Assets', 'Cartoon Characters', 'Kundekrigen')
+ASSETS = sys.argv[1] if len(sys.argv) > 1 else os.path.join(ROD, '..', 'Assets', 'Cartoon Characters')
+ALMINDELIGE = os.path.join(ASSETS, 'Kundekrigen v2')
+KLINIKKER = os.path.join(ASSETS, 'Kundekrigen klinikker')
+# Klinikkerne i spillets holdrækkefølge, og personalets navne med tegnsætning.
+KLINIK_ORDEN = ['Klinik Højhaven', 'Klinik Speciallægeselskabet Mogensen']
 UD = os.path.join(ROD, 'static', 'grafik', 'tegneserie')
 UD_JS = os.path.join(ROD, 'static', 'js', 'render', 'tegneserie_rig.js')
 
 FRAMES = ([f'idle_{i}' for i in range(4)] + [f'run_{i}' for i in range(4)] + [f'jump_{i}' for i in range(2)]
           + [f'attack_r_{i}' for i in range(3)] + [f'attack_l_{i}' for i in range(3)] + [f'death_{i}' for i in range(4)])
-OMDOEB = {'14': 'IT-Nina'}           # kunder (efter mappenummer), der hedder noget andet i spillet
+OMDOEB = {'14': 'IT-Nina',          # kunder (efter nummer), der hedder noget andet i spillet
+          '18': 'Bente "Bare Rolig" Hansen', '19': 'Hansen, Dr. Hansen', '22': 'Dr. Jan fra Mors'}
 SKALA = 0.55                      # atlasset gemmes i 55 % af kildens opløsning
 KOL = 5                           # 5 x 4 frames i atlasset
 
@@ -89,15 +99,35 @@ def hudmaske(a, hud, tol=34):
     return m & (a[..., 3] > 120)
 
 
+def kilder():
+    """(mappe, nr, navn, klinik) for alle kunder i spillets rækkefølge."""
+    ud = []
+    for d in sorted(os.listdir(ALMINDELIGE)):
+        if d[:2].isdigit() and os.path.isdir(os.path.join(ALMINDELIGE, d)):
+            ud.append((os.path.join(ALMINDELIGE, d), d.split('_', 1)[1], None))
+    for klinik in KLINIK_ORDEN:
+        rod = os.path.join(KLINIKKER, klinik)
+        for d in sorted(os.listdir(rod)):
+            if d[:1].isdigit() and os.path.isdir(os.path.join(rod, d)):
+                ud.append((os.path.join(rod, d), d.split('_', 1)[1], klinik))
+    return [(sti, f'{i + 1:02d}', OMDOEB.get(f'{i + 1:02d}', navn), klinik)
+            for i, (sti, navn, klinik) in enumerate(ud)]
+
+
+def haandmaske(a, hud):
+    """Hænderne i et hånd-lag. Bare hænder: alt synligt. Med våben: hudfarven."""
+    return hudmaske(a, hud) if hud else (a[..., 3] > 120)
+
+
 def main():
     os.makedirs(UD, exist_ok=True)
-    mapper = sorted(d for d in os.listdir(KILDE) if d[:2].isdigit() and os.path.isdir(os.path.join(KILDE, d)))
+    mapper = kilder()
 
     # 1. Fælles udsnit over alle kunders kropsframes.
     x0 = y0 = 10 ** 9; x1 = y1 = -1
-    for d in mapper:
+    for d, _, _, _ in mapper:
         for f in FRAMES:
-            a = rgba(os.path.join(KILDE, d, 'No hands', f + '.png'))
+            a = rgba(os.path.join(d, 'No hands', f + '.png'))
             ys, xs = np.nonzero(a[..., 3] > 0)
             x0, x1 = min(x0, xs.min()), max(x1, xs.max())
             y0, y1 = min(y0, ys.min()), max(y1, ys.max())
@@ -108,30 +138,33 @@ def main():
     print('udsnit', (x0, y0, x1, y1), '->', (cw, ch))
 
     rig = {'celle': [cw, ch], 'kol': KOL, 'frames': FRAMES, 'skala': SKALA, 'kunder': []}
-    for d in mapper:
-        navn = OMDOEB.get(d[:2], d.split('_', 1)[1])
+    for d, nr, navn, klinik in mapper:
         atlas = Image.new('RGBA', (cw * KOL, ch * ((len(FRAMES) + KOL - 1) // KOL)), (0, 0, 0, 0))
-        krop0 = rgba(os.path.join(KILDE, d, 'No hands', 'idle_0.png'))
-        haand0 = rgba(os.path.join(KILDE, d, 'Only hands', 'idle_0.png'))
-        hud = hudfarver(krop0, haand0)
+        krop0 = rgba(os.path.join(d, 'No hands', 'idle_0.png'))
+        haand0 = rgba(os.path.join(d, 'Only hands', 'idle_0.png'))
+        # Har hånd-laget et våben (grå toner ud over huden), findes hænderne
+        # ud fra hudfarven; ellers er hele laget hænder.
+        bare = not ((haand0[..., 3] > 120) & (haand0[..., :3].max(-1) - haand0[..., :3].min(-1) < 20)
+                    & (haand0[..., :3].sum(-1) > 150)).sum() > 200
+        hud = [] if bare else hudfarver(krop0, haand0)
 
         haender = []
         for i, f in enumerate(FRAMES):
-            k = Image.open(os.path.join(KILDE, d, 'No hands', f + '.png')).convert('RGBA').crop((x0, y0, x1 + 1, y1 + 1))
+            k = Image.open(os.path.join(d, 'No hands', f + '.png')).convert('RGBA').crop((x0, y0, x1 + 1, y1 + 1))
             k = k.resize((cw, ch), Image.LANCZOS)
             atlas.paste(k, ((i % KOL) * cw, (i // KOL) * ch))
-            h = rgba(os.path.join(KILDE, d, 'Only hands', f + '.png'))
-            komp = sorted((c for c in komponenter(hudmaske(h, hud)) if len(c[0]) > 120),
+            h = rgba(os.path.join(d, 'Only hands', f + '.png'))
+            komp = sorted((c for c in komponenter(haandmaske(h, hud)) if len(c[0]) > 120),
                           key=lambda c: -len(c[0]))[:2]
             pos = [[round((c[1].mean() - x0) * SKALA, 1), round((c[0].mean() - y0) * SKALA, 1)] for c in komp]
             while len(pos) < 2:
                 pos.append(pos[-1] if pos else [cw * 0.5, ch * 0.7])
             pos.sort(key=lambda p: p[0])            # bag (venstre) først, så forreste
             haender.append(pos)
-        atlas.save(os.path.join(UD, f'{d[:2]}.webp'), quality=90, method=6)
+        atlas.save(os.path.join(UD, f'{nr}.webp'), quality=90, method=6)
 
         # 2. Den rene knytnæve: hånden med mindst våben omkring sig.
-        maske = hudmaske(haand0, hud)
+        maske = haandmaske(haand0, hud)
         vaaben = (haand0[..., 3] > 120) & ~udvid(maske, 2) & (haand0[..., :3].sum(-1) > 60)
         bedst = None
         for ys, xs in komponenter(maske):
@@ -139,7 +172,9 @@ def main():
                 continue
             m = np.zeros(maske.shape, bool); m[ys, xs] = True
             omraade = udvid(m, 6)
-            snavs = int((omraade & vaaben).sum())
+            # Med våben: hånden med mindst våben omkring sig. Bare hænder: den
+            # smalleste — knytnæven frem for den pegende hånd.
+            snavs = int((omraade & vaaben).sum()) if hud else int(xs.max() - xs.min())
             if bedst is None or snavs < bedst[0]:
                 bedst = (snavs, m)
         m = udvid(bedst[1], 4) & (haand0[..., 3] > 0) & ~vaaben
@@ -148,20 +183,25 @@ def main():
         naeve = haand0.copy(); naeve[~m] = 0
         ni = Image.fromarray(naeve[hy0:hy1 + 1, hx0:hx1 + 1])
         ni = ni.resize((max(1, round(ni.width * SKALA)), max(1, round(ni.height * SKALA))), Image.LANCZOS)
-        ni.save(os.path.join(UD, f'{d[:2]}_haand.webp'), quality=92, method=6)
+        ni.save(os.path.join(UD, f'{nr}_haand.webp'), quality=92, method=6)
 
         # Fodpunkt og midte fra tomgangen.
         ys, xs = np.nonzero(krop0[..., 3] > 0)
+        if not hud:
+            # Hudfarven (til spillet) er næven midt i: ikke kontur, ikke skygge.
+            c = naeve[naeve[..., 3] > 250][:, :3]
+            c = c[c.sum(-1) > 150]
+            hud = [np.array(Counter(map(tuple, c)).most_common(1)[0][0], int)] if len(c) else []
         rig['kunder'].append({
-            'nr': d[:2], 'navn': navn,
+            'nr': nr, 'navn': navn, **({'klinik': klinik} if klinik else {}),
             'fod': [round((xs.mean() - x0) * SKALA, 1), round((ys.max() - y0) * SKALA, 1)],
             'top': round((ys.min() - y0) * SKALA, 1),
             'haand': [ni.width, ni.height],
             'haender': haender,
             'hud': '#%02X%02X%02X' % tuple(hud[0]) if hud else '#FFC49A',
         })
-        print(f'{d:22s} hud {len(hud)} toner, næve {ni.width}x{ni.height}, '
-              f'atlas {os.path.getsize(os.path.join(UD, d[:2] + ".webp")) // 1024} KB')
+        print(f'{nr} {navn:28s} hud {len(hud)} toner, næve {ni.width}x{ni.height}, '
+              f'atlas {os.path.getsize(os.path.join(UD, nr + ".webp")) // 1024} KB')
 
     with open(UD_JS, 'w') as f:
         f.write('/* Genereret af vaerktoej/tegneseriekunder.py — ret ikke i hånden.\n'

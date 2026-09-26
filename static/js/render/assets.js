@@ -37,6 +37,10 @@ const MANIFEST = {
   kasseHjaelp: 'props/pill_1.png',         // svævepillen: lav tyngde
   mursten: 'props/brick.png',              // hændelsen "mursten fra loftet"
   forbinding: 'props/bandage.png',
+  // Genstandene som tegneseriemodeller (objekt_view.js): ét atlas pr. model.
+  ...Object.fromEntries(['vaerktoejskasse', 'pilleglas', 'svaevepille', 'phishing_mine', 'printer',
+    'tvangsopdatering', 'bordtelefon', 'faldskaerm', 'gravsten', 'eksplosion']
+    .map((n) => [`obj_${n}`, `objekter/${n}.webp`])),
   pilTom: 'tanks/tank_arrowEmpty.png',
   pilFuld: 'tanks/tank_arrowFull.png',
 

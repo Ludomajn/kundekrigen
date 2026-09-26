@@ -46,6 +46,8 @@ export function nyTur(v) {
     roTael: 0,
     oploesningTick: 0,
     turNr: 0,
+    fuldtTilbagetog: false,     // turen venter på hele tilbagetoget (minen)
+    smitteKoert: false,         // COVID-opgøret er kørt for denne tur
   };
 }
 
@@ -110,7 +112,13 @@ export function tvungenRo(v, h) {
   v.forsinkede.length = 0;
   for (const b of v.baevere) {
     if (b.doed) continue;
+    if (b.redskab) {
+      // Boret stoppes, hvor det er; sigtet kommer tilbage.
+      if (b.redskab.vinkel0 !== undefined) b.vinkel = b.redskab.vinkel0;
+      h.push({ navn: 'redskabSlut', slags: b.redskab.slags, baever: b.id, vaaben: b.redskab.vaaben });
+    }
     b.redskab = null;
+    b.graver = false;
     b.vx = 0; b.vy = 0;
     if (!b.paaJorden) {
       const y = v.terraen.jordUnder(Math.round(b.x), Math.round(b.y));

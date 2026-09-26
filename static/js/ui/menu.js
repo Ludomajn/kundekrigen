@@ -209,7 +209,8 @@ export function lavMenu(rod, api) {
             ${[
               ['← →', T.taster.gaa], ['↑ ↓', T.taster.sigt], ['Shift + ↑↓', T.taster.finsigte],
               ['Mellemrum', T.taster.ladOp], ['Enter', T.taster.hop], ['Backspace', T.taster.salto],
-              ['1…0 + ´', T.taster.favorit], ['Tab', T.taster.panel], ['Q / E', T.taster.cykl],
+              ['1…0', T.taster.favorit], ['Tab', T.taster.panel], ['Shift + 1…0', T.taster.bind],
+              ['Q / E', T.taster.cykl],
               ['F', T.taster.lunte], ['T', T.taster.naesteFjende], ['W A S D', T.taster.panorer],
               ['C', T.taster.centrer], ['Z / X', T.taster.zoom], ['H', T.taster.kig],
               ['K', T.taster.staaOver], ['Esc', T.taster.pause],
@@ -323,7 +324,7 @@ export function lavMenu(rod, api) {
               ${raekke('baevere_pr_hold', T.lobby.baeverePrHold, tilstand.indst.baevere_pr_hold, [1, 2, 3, 4, 5, 6], erVaert)}
               ${raekke('turtid', T.lobby.turtid, tilstand.indst.turtid, [15, 20, 30, 45, 60], erVaert, (v) => v + ' s')}
               ${raekke('kamptid', T.lobby.kamptid, tilstand.indst.kamptid, [600, 1200, 1800, 2700], erVaert, (v) => (v / 60) + ' min')}
-              ${raekke('banetype', T.lobby.banetype, tilstand.indst.banetype || 'aaben', BANE_TYPER, erVaert, (v) => BANE_NAVN[v])}
+              ${raekke('banetype', T.lobby.banetype, tilstand.indst.banetype || 'fort', BANE_TYPER, erVaert, (v) => BANE_NAVN[v])}
               ${raekke('vejr', T.lobby.vejr, tilstand.indst.vejr || 'auto', ['auto', ...VEJRTYPER], erVaert, (v) => VEJR_NAVN[v])}
               ${raekke('vind', T.lobby.vind, tilstand.indst.vind ? 1 : 0, [0, 1], erVaert, (v) => (v ? 'Til' : 'Fra'))}
             </div>

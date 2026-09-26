@@ -60,8 +60,41 @@ export const T = {
     ammo: 'Ammo',
     ubegraenset: '∞',
     lunte: 'Lunte',
-    vaabenpanel: 'Våben',
+    vaabenpanel: 'Hele arsenalet',
     bekraeftStaaOver: 'Sæt på hold og afslut turen?',
+
+    // Våbenbjælken og arsenalskuffen
+    flereVaaben: 'Flere våben',
+    flereVaabenTitel: 'Flere våben — hele arsenalet (Tab)',
+    arsenalUnder: 'Uret står stille, mens skuffen er åben (højst 5 s pr. tur).',
+    lukArsenal: 'Luk arsenalet (Tab eller Esc)',
+    tomPlads: 'Tom plads',
+    tomPladsTitel: (tast) => `Tom plads — læg et våben her med Shift + ${tast} i arsenalet`,
+    faasIKasser: 'Fås i forsyningskasser',
+    opbrugt: 'Opbrugt',
+    iHaanden: 'i hånden',
+    lagtPaaBjaelke: (navn, tast) => `${navn} ligger nu på ${tast}`,
+    kanIkkeBindes: (navn) => `${navn} kan ikke ligge på bjælken`,
+    status: {
+      skjold: 'Hjemmearbejde — kan ikke rammes',
+      springOver: 'Opdaterer — springer næste tur over',
+      smittet: 'Smittet med COVID',
+    },
+  },
+
+  /* Beskeder til de nye våbenhændelser (bannere i main.js). */
+  vaaben: {
+    kasseFalder: 'Supportpakke på vej',
+    kasseVaaben: (antal, navn) => `Supportpakke: +${antal} ${navn}`,
+    vaabenTomt: (navn) => `${navn} er brugt op — flere fås i forsyningskasser`,
+    opdateringRamt: (navn) => `${navn} fik en tvangsopdatering — springer næste tur over`,
+    turSprungetOver: (navn) => `${navn} opdaterer stadig … turen springes over`,
+    skjoldOp: (navn) => `${navn} arbejder hjemmefra — kan ikke rammes`,
+    skjoldSlut: (navn) => `${navn} er tilbage på kontoret`,
+    skjoldBlok: 'Arbejder hjemme — ingen skade',
+    smittet: (navn) => `${navn} er smittet`,
+    rask: (navn) => `${navn} er rask igen`,
+    teleportAfvist: 'Fjernsupport kan ikke nå derhen — vælg et andet sted',
   },
 
   net: {
@@ -86,9 +119,10 @@ export const T = {
     ladOp: 'Lad op og affyr (hold)',
     hop: 'Hop',
     salto: 'Baglæns saltomortale',
-    favorit: 'Vælg våben 1-12',
-    panel: 'Våbenpanel',
-    cykl: 'Forrige/næste våben',
+    favorit: 'Vælg våben 1–10 fra bjælken',
+    panel: 'Flere våben: hele arsenalet',
+    bind: 'I arsenalet: læg våbnet på bjælken',
+    cykl: 'Forrige/næste våben på bjælken',
     lunte: 'Lunte 1-5 s',
     naesteFjende: 'Spring markør til fjende',
     panorer: 'Panorér kamera',
@@ -109,6 +143,21 @@ export const T = {
 export const esc = (s) => String(s ?? '').replace(/[&<>"']/g,
   (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
+/* Lange sammensatte navne (Kvartalsopkrævning, Stregkodescanner) får en blød
+ * bindestreg ved det sidste led, så de deles pænt på to linjer i de smalle
+ * felter på våbenbjælken. Returnerer HTML (escapet). */
+const ORDLED = ['opkrævning', 'opdatering', 'arbejde', 'nedbrud', 'support', 'scanner'];
+export function brydOrd(tekst) {
+  return String(tekst ?? '').split(' ').map((ord) => {
+    if (ord.length < 11 || ord.includes('-')) return esc(ord);     // en bindestreg deler allerede
+    const lav = ord.toLowerCase();
+    const led = ORDLED.find((l) => lav.endsWith(l) && lav.length >= l.length + 3);
+    if (!led) return esc(ord);
+    const k = ord.length - led.length;
+    return `${esc(ord.slice(0, k))}&shy;${esc(ord.slice(k))}`;
+  }).join(' ');
+}
+
 export const mmss = (sek) => {
   const s = Math.max(0, Math.ceil(sek));
   return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
@@ -119,4 +168,4 @@ export const VEJR_NAVN = {
   slud: 'Slud', sne: 'Sne', taage: 'Tåge', auto: 'Tilfældigt',
 };
 
-export const BANE_NAVN = { aaben: 'Åbent land', hule: 'Hulesystem', oeer: 'Øer' };
+export const BANE_NAVN = { fort: 'Fort', aaben: 'Åbent land', hule: 'Hulesystem', oeer: 'Øer' };

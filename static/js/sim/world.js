@@ -21,7 +21,7 @@ import * as F from './physics.js';
 import * as D from './damage.js';
 import * as B from './behaviours.js';
 import * as TU from './turn.js';
-import { VAABEN, startAmmo, tilfaeldigtKassevaaben, FAVORITTER } from './weapons.js';
+import { VAABEN, startAmmo, tilfaeldigtKassevaaben, kasseAntal, FAVORITTER } from './weapons.js';
 import { valider, K } from './commands.js';
 import { OPKALD, TELEFON_MAKS } from './opkald.js';
 
@@ -32,6 +32,10 @@ const EFTERSPIL = 45, EFTERSPIL_SKADE = 100;
 /* Pillerne: hvor meget de giver, hvor højt tålmodigheden kan nå med dem, og
  * hvor mange glas der højst står på banen. */
 const PILLER_HP = 50, PILLER_LOFT = 150, PILLER_MAKS = 2;
+
+/* Forsyningskasser: hvor højt over jorden de slippes (de daler i faldskærm
+ * med 70 wu/s, physics.skridtKasse), og hvor mange der højst ligger på banen. */
+const KASSE_FALDHOEJDE = 360, VAABENKASSE_MAKS = 4;
 import { tagSnapshot, tagDelta } from './snapshot.js';
 
 export const T = TU.T;
@@ -41,15 +45,25 @@ const STANDARD_CFG = {
   kampTicks: 30 * 60 * HZ,
   vind: true,
   vejr: 'auto',
-  banetype: 'aaben',
+  banetype: 'fort',
   ammoSkema: 'standard',
-  kasseChance: 0.28,
+  kasseChance: 0.45,
 };
 
 export function lavVerden(opsaet) {
   const v = new Verden(opsaet);
   return v;
 }
+
+/** Banens layout: antal klinikker og kunder pr. klinik (den største klinik,
+ *  talt fra opsætningen — døde kunder tæller med, så tallet aldrig ændrer sig). */
+function lavLayout(antalHold, baevere) {
+  const n = {};
+  let prHold = 1;
+  for (const b of baevere) { n[b.hold] = (n[b.hold] || 0) + 1; if (n[b.hold] > prHold) prHold = n[b.hold]; }
+  return { antalHold: antalHold | 0, prHold };
+}
+const sammeLayout = (a, b) => !!a && !!b && a.antalHold === b.antalHold && a.prHold === b.prHold;
 
 class Verden {
   constructor(opsaet) {
@@ -82,7 +96,7 @@ class Verden {
     this.vaabenPrHold = {};
 
     this.tur = TU.nyTur(this);
-    this.valgtVaaben = 'grenroer';
+    this.valgtVaaben = 'staa_over';
     this.valgtLunte = 3;
     this.markoer = { x: 0, y: 0, vinkel: 0, retning: 1 };
     this.hold = [];
@@ -91,10 +105,15 @@ class Verden {
     this.opladning = 0;
     this.opladerNu = false;
     this.brugtIDenneTur = 0;
+    // Brug pr. våben i denne tur. Scanneren betaler ved første scanning og
+    // slutter turen ved den anden — uden at andre våben tæller med.
+    this.brugtPrVaaben = {};
+    this.panelAabent = false;          // våbenskuffen er åben (sat med 'panel')
     this.koe = [];                     // kommandoer der venter på næste tick
     this.slut = null;
 
     if (opsaet.hold) this._saetOpHold(opsaet.hold);
+    this.valgtVaaben = this._reserveVaaben(0);
     this._genererBane();
   }
 
@@ -122,7 +141,10 @@ class Verden {
   }
 
   _genererBane() {
-    const res = genererSpilbar(this.froe, this.banetype, Math.max(2, this.baevere.length));
+    // Fortet bygges efter holdene: ét fort pr. klinik, én etage pr. kunde.
+    // Layoutet følger med i snapshottet, så spejlet og gæsterne bygger det samme.
+    this.layout = lavLayout(this.hold.length, this.baevere);
+    const res = genererSpilbar(this.froe, this.banetype, Math.max(2, this.baevere.length), this.layout);
     this.terraen = res.terraen;
     this.startpladser = res.pladser;
     this.froeBrugt = res.froe;
@@ -138,7 +160,7 @@ class Verden {
    * øje med, hvor man træder.
    */
   _udstyrBanen() {
-    const pladser = findStartpladser(this.terraen, this.vandNiveau);
+    const pladser = this._udstyrsPladser();
     if (pladser.length < 6) return;
 
     const optaget = this.baevere.map((b) => b.x);
@@ -156,7 +178,7 @@ class Verden {
     for (let n = 0; n < antalMiner && i < ledige.length; n++) {
       const p = naeste();
       this.placerede.push(E.lavPlaceret(this.nytId(), {
-        x: p.x, y: p.y + 2, lunte: 0, naerhed: 38, armering: 0,
+        x: p.x, y: p.y + 2, lunte: 0, naerhed: VAABEN.baevermine.placeret.naerhed, armering: 0,
         detonation: { radius: 52, skade: 42, knockback: 240, carve: true },
         ejer: null, ejerHold: null, sprite: 'mine',
       }));
@@ -180,6 +202,7 @@ class Verden {
   /** Udsæt bævere. Hold fordeles INTERLEAVED, så de starter blandet ud over
    *  banen i stedet for at klumpe sig hold for hold. */
   udsaet() {
+    if (this.terraen.fort) { this._udsaetPaaFort(); return; }
     const pladser = this.rngSim.bland(this.startpladser.slice());
     const brugte = [];
     const perHold = new Map();
@@ -212,6 +235,48 @@ class Verden {
     this.tur.tilstandTick = 0;
   }
 
+  /** Fortbanen: klinik i står på fort i, én kunde pr. etage nedefra (de
+   *  ekstra kunder side om side på de nederste etager, se terrain_gen.fortPlan).
+   *  Kunderne vender ind mod banens midte. */
+  _udsaetPaaFort() {
+    const { forter } = this.terraen.fort;
+    const naeste = new Map();                // hold -> næste ledige plads på fortet
+    const reserve = [];
+    for (const b of this.baevere) {
+      const f = forter[b.hold];
+      const j = naeste.get(b.hold) || 0;
+      const p = f && f.pladser[j];
+      if (!p) { reserve.push(b); continue; }
+      naeste.set(b.hold, j + 1);
+      b.x = p.x; b.y = p.y;
+      b.retning = f.cx <= this.terraen.w / 2 ? 1 : -1;
+      b.paaJorden = true;
+      F.frigoer(this.terraen, b);
+    }
+    // Flere kunder end planen har plads til (kan ikke ske med et layout fra
+    // holdene): på land uden for fortene, som på de andre baner.
+    const pladser = this._udstyrsPladser();
+    reserve.forEach((b, i) => {
+      const p = pladser[(i * 7) % Math.max(1, pladser.length)] || { x: 200 + i * 120, y: this.terraen.h * 0.7 };
+      b.x = p.x; b.y = p.y; b.paaJorden = true;
+      F.frigoer(this.terraen, b);
+    });
+    this.tur.tilstand = T.UDSAET;
+    this.tur.tilstandTick = 0;
+  }
+
+  /** Steder til miner, printere, telefoner, piller og kasser: startpladserne
+   *  minus fortene (tårn, gård og det stykke af volden, man lander på, når
+   *  man hopper ud ad et vindue — ~190-280 wu fra midten, plus minens 42 wu).
+   *  Er der ingen forter, er det bare findStartpladser — de andre baner får
+   *  præcis de samme pladser som før. */
+  _udstyrsPladser() {
+    const pladser = findStartpladser(this.terraen, this.vandNiveau);
+    const fort = this.terraen.fort;
+    if (!fort) return pladser;
+    return pladser.filter((p) => fort.forter.every((f) => Math.abs(p.x - f.cx) > f.fodHalv + 160));
+  }
+
   // ------------------------------------------------------------ opslag
 
   aktivBaever() {
@@ -229,7 +294,9 @@ class Verden {
     const t = this.tur.tilstand;
     if (t === T.SPILLER_AKTIV) return true;
     // Tilbagetog: bevægelse er tilladt mens uret løber, også midt i flugten.
-    if (t === T.OPLOESNING && this.tur.retreatTil !== null) {
+    // AFFYRING er med: ellers blev et slip af piletasten i netop det tick
+    // afvist, og kunden gik videre gennem hele tilbagetoget.
+    if ((t === T.OPLOESNING || t === T.AFFYRING) && this.tur.retreatTil !== null) {
       return this.tick < this.tur.retreatTil;
     }
     return false;
@@ -249,6 +316,24 @@ class Verden {
   }
 
   frigoerBaever(b) { F.frigoer(this.terraen, b); }
+
+  /** Er våbnet allerede betalt i denne tur? Scannerens anden scanning må
+   *  bruges, selv om lageret nu står på 0. */
+  _forudbetalt(w) {
+    const brugt = this.brugtPrVaaben[w.id] || 0;
+    return brugt % (w.brugPrTur || 1) !== 0;
+  }
+
+  /** Våbnet, holdet står med, når det husker intet brugbart: første favorit
+   *  med ammunition, ellers første våben med ammunition, ellers "Sæt på hold".
+   *  Et valgt våben med 0 i lageret kan aldrig affyres, og HUD'en ville lyve. */
+  _reserveVaaben(holdId) {
+    for (const id of FAVORITTER) if (VAABEN[id] && this.ammoFor(holdId, id) !== 0) return id;
+    for (const w of Object.values(VAABEN)) {
+      if (w.kategori !== 'meta' && this.ammoFor(holdId, w.id) !== 0) return w.id;
+    }
+    return 'staa_over';
+  }
 
   // ------------------------------------------------------------ kommandoer
 
@@ -273,7 +358,7 @@ class Verden {
     switch (cmd.h) {
       case 'vaelgVaaben': {
         if (!VAABEN[cmd.id]) return;
-        if (this.ammoFor(b.hold, cmd.id) === 0) return;
+        if (this.ammoFor(b.hold, cmd.id) === 0 && !this._forudbetalt(VAABEN[cmd.id])) return;
         this.valgtVaaben = cmd.id;
         const w = VAABEN[cmd.id];
         this.valgtLunte = w.lunte ? w.lunte.start : 3;
@@ -297,46 +382,78 @@ class Verden {
       case 'staaOver':
         this._afslutTur(h, 'stod over');
         break;
+      case 'panel':
+        // Kun den aktive spiller kan sende den (valider); uret står højst
+        // PANEL_PAUSE_LOFT tick stille pr. tur, se SPILLER_AKTIV.
+        this.panelAabent = !!cmd.aaben;
+        break;
       case 'affyr':
+        // Mens boret arbejder, STOPPER et nyt tryk det i stedet for at skyde.
+        if (b.redskab?.slags === 'bor') { b.redskab.stop = true; break; }
         this._affyr(b, cmd, h);
         break;
     }
   }
 
   _affyr(b, cmd, h) {
+    // Flere affyr-kommandoer kan valideres før ét tick: kun den første tæller.
+    if (this.tur.tilstand !== T.SPILLER_AKTIV) return;
     const w = this.vaabenNu();
     if (!w) return;
     const hold = this.hold[b.hold];
     const ammo = this.ammoFor(b.hold, w.id);
-    if (ammo === 0) return;
+    const forudbetalt = this._forudbetalt(w);
+    if (ammo === 0 && !forudbetalt) return;
 
-    B.affyr(this, b, w, cmd.kraft ?? 0, {
+    const res = B.affyr(this, b, w, cmd.kraft ?? 0, {
       x: this.markoer.x, y: this.markoer.y,
       vinkel: this.markoer.vinkel, retning: this.markoer.retning,
-    }).forEach((e) => h.push(e));
+    });
+    res.forEach((e) => h.push(e));
+    // Afvist (fx Fjernsupport uden et sikkert sted): intet brugt, turen fortsætter.
+    if (res.afvist) return;
 
-    // Byggeredskaber koster ammo, men turen fortsætter: man bygger rampen
-    // eller dækningen og bruger resten af tiden på at gå og skyde.
-    if (w.beholderTur) {
-      if (ammo > 0) hold.ammo[w.id] = ammo - 1;
-      h.push({ navn: 'ammoAendret', hold: b.hold, vaaben: w.id, ammo: hold.ammo[w.id] });
-      return;
-    }
-
-    this.brugtIDenneTur++;
+    // Ammunitionen betales ved FØRSTE brug; én ammunition rækker brugPrTur
+    // gange i samme tur. Tælleren er pr. våben, så en scanning efterfulgt af
+    // et andet våben ikke længere giver scanneren gratis.
     const maksBrug = w.brugPrTur || 1;
-    const braendteAmmo = this.brugtIDenneTur >= maksBrug;
-    if (braendteAmmo && ammo > 0) hold.ammo[w.id] = ammo - 1;
+    if (!forudbetalt && ammo > 0) hold.ammo[w.id] = ammo - 1;
+    this.brugtPrVaaben[w.id] = (this.brugtPrVaaben[w.id] || 0) + 1;
+    this.brugtIDenneTur++;
+    h.push({ navn: 'ammoAendret', hold: b.hold, vaaben: w.id, ammo: hold.ammo[w.id] });
 
-    if (w.afslutterTur || braendteAmmo) {
+    // Byggeredskaber og skjoldet: turen fortsætter — man bygger rampen eller
+    // går hjemmefra og bruger resten af tiden på at gå og skyde.
+    if (w.beholderTur) return;
+    // Et aktivt redskab (boret) afslutter selv turen, når det stopper.
+    if (b.redskab) return;
+
+    if (w.afslutterTur || this.brugtPrVaaben[w.id] >= maksBrug) {
       // Tilbagetogsuret starter NU — mens projektilet stadig er i luften.
       this.tur.retreatTil = this.tick + (w.retreatTicks || 0);
+      this.tur.fuldtTilbagetog = !!w.fuldtTilbagetog;
       this.tur.tilstand = T.AFFYRING;
       this.tur.tilstandTick = 0;
       this.opladerNu = false;
       this.opladning = 0;
     }
-    h.push({ navn: 'ammoAendret', hold: b.hold, vaaben: w.id, ammo: hold.ammo[w.id] });
+  }
+
+  /** Boret er stoppet. Var det spillerens eget træk, slutter turen nu som
+   *  efter et skud: tilbagetog og så opløsning. */
+  _redskabFaerdig(b, vaabenId) {
+    if (b.id !== this.tur.baeverId || this.tur.tilstand !== T.SPILLER_AKTIV) return;
+    const w = VAABEN[vaabenId];
+    this.tur.retreatTil = this.tick + (w?.retreatTicks ?? 150);
+    this.tur.fuldtTilbagetog = false;
+    this.tur.tilstand = T.AFFYRING;
+    this.tur.tilstandTick = 0;
+    this.opladerNu = false;
+    this.opladning = 0;
+    // Piletasterne styrede boret. Holdes de stadig, da boret stopper, må
+    // kunden ikke bare gå videre i samme retning — ud over kanten og i havet.
+    // Et nyt tryk (kantudløst fra brugerfladen) går igennem som normalt.
+    this.holdt = 0;
   }
 
   // ------------------------------------------------------------ hovedskridt
@@ -357,16 +474,25 @@ class Verden {
       D.eksploder(this, e.x, e.y, e.radius, e.skade, e.knockback, e.carve).forEach((x) => h.push(x));
     }
 
-    // Forsinkede spawns (luftangreb).
+    // Forsinkede spawns (luftangreb, mursten) og forsinkede handlinger
+    // (klasket, der rammer efter svinget): {tick, lav} eller {tick, udfoer}.
     for (let i = this.forsinkede.length - 1; i >= 0; i--) {
-      if (this.forsinkede[i].tick <= this.tick) {
-        this.projektiler.push(this.forsinkede[i].lav());
+      const f = this.forsinkede[i];
+      if (f.tick <= this.tick) {
         this.forsinkede.splice(i, 1);
+        if (f.udfoer) f.udfoer(this, h);
+        else this.projektiler.push(f.lav());
       }
     }
 
     this._fysik(h);
     D.tjekDrukning(this, h);
+
+    // En kunde, der har lagt på, bærer ingen status — hverken kraftfelt,
+    // smitte eller en ventende opdatering (spejlet viser ellers virus på liget).
+    for (const b of this.baevere) {
+      if (b.doed && (b.skjold || b.smittet || b.springOver)) { b.skjold = false; b.smittet = 0; b.springOver = 0; }
+    }
 
     return h;
   }
@@ -375,8 +501,16 @@ class Verden {
     const t = this.terraen;
 
     for (const b of this.baevere) {
-      if (b.doed) continue;
-      if (b.redskab) { B.skridtRedskab(this, b, h); continue; }
+      if (b.doed) {
+        // Dør kunden midt i en boring, stopper boret — det må ikke hænge.
+        if (b.redskab) B.stopRedskab(this, b, h);
+        continue;
+      }
+      if (b.redskab) {
+        const vaabenId = b.redskab.vaaben;
+        if (!B.skridtRedskab(this, b, h)) this._redskabFaerdig(b, vaabenId);
+        continue;
+      }
       const skade = F.skridtBaever(t, b, this.vind);
       if (skade) D.faldskade(this, b, skade, h);
       if (t.udenfor(b.x, b.y)) {
@@ -398,6 +532,7 @@ class Verden {
       this.projektiler.splice(i, 1);
       if (traef.slags === 'ude') { h.push({ navn: 'projektilUde', id: p.id }); continue; }
       if (p.klynge) B.delKlynge(this, p).forEach((e) => h.push(e));
+      if (p.smitte) B.smitteSky(this, p.x, p.y, p.smitte, h);
       if (p.fyld) {
         // Papirbunken: bliver liggende som en bakke. Kunder, den lander på,
         // skubbes op ovenpå i stedet for at blive begravet.
@@ -417,8 +552,9 @@ class Verden {
     for (let i = this.placerede.length - 1; i >= 0; i--) {
       const p = this.placerede[i];
       if (p.doed) { this.placerede.splice(i, 1); continue; }
+      // skridtFaldende tæller alderen op — én gang pr. tick, så en armering
+      // på 300 tick også ER 5 s.
       F.skridtFaldende(t, p, this.vindNu());
-      p.alder++;
       if (p.lunte > 0) {
         p.lunte--;
         if (p.lunte === 0) {
@@ -444,7 +580,11 @@ class Verden {
         F.skridtFaldende(t, k);
         if (k.y < this.vandNiveau || t.udenfor(k.x, k.y)) { this.kasser.splice(i, 1); continue; }
       } else {
+        // Sprænges jorden under en landet forsyningskasse, daler den videre.
+        if (k.landet && !t.fast(Math.round(k.x), Math.round(k.y) - 2)) k.landet = false;
         F.skridtKasse(t, k, this.vindNu());
+        // En forsyningskasse, der driver ud over havet, synker.
+        if (k.y < this.vandNiveau) { this.kasser.splice(i, 1); continue; }
       }
       // Kasser samles op NÅR SOM HELST, ikke kun i egen tur — at samle en
       // kasse op midt i et knockback-flyv er et ægte Worms-øjeblik.
@@ -470,8 +610,13 @@ class Verden {
       h.push({ navn: 'kasseSamlet', baever: b.id, slags: k.slags, indhold: b.hp - foer, x: k.x, y: k.y });
       return;
     } else if (k.slags === 'vaaben') {
-      const nu = hold.ammo[k.indhold];
-      if (nu >= 0) hold.ammo[k.indhold] = nu + 2;
+      const antal = kasseAntal(k.indhold);
+      const nu = hold.ammo[k.indhold] ?? 0;
+      if (nu >= 0) hold.ammo[k.indhold] = nu + antal;
+      // Spejlet og gæsterne kender kun ammunition fra snapshots og denne hændelse.
+      h.push({ navn: 'ammoAendret', hold: b.hold, vaaben: k.indhold, ammo: hold.ammo[k.indhold] });
+      h.push({ navn: 'kasseSamlet', baever: b.id, slags: k.slags, indhold: k.indhold, antal, x: k.x, y: k.y });
+      return;
     }
     h.push({ navn: 'kasseSamlet', baever: b.id, slags: k.slags, indhold: k.indhold, x: k.x, y: k.y });
   }
@@ -491,6 +636,16 @@ class Verden {
       case T.TUR_START:
         if (this._aktivErDoed()) { this._afslutTur(h, 'kunden døde'); break; }
         if (tur.tilstandTick >= TU.TUR_START_TICKS) {
+          // Tvangsopdateret: kameraet har fundet kunden, men den installerer
+          // opdateringer og springer turen over. _afslutTur tager den normale
+          // vej til næste tur, så naesteBaever aldrig kan give null her.
+          const akt = this.aktivBaever();
+          if (akt.springOver) {
+            akt.springOver = 0;
+            h.push({ navn: 'turSprungetOver', baever: akt.id, hold: akt.hold });
+            this._afslutTur(h, 'opdaterer');
+            break;
+          }
           tur.tilstand = T.SPILLER_AKTIV;
           tur.tilstandTick = 0;
           h.push({ navn: 'dinTur', baever: tur.baeverId, hold: tur.holdIdx });
@@ -505,7 +660,12 @@ class Verden {
         if (!this.panelAabent) tur.tickTilbage--;
         else if (tur.pausetTick < TU.PANEL_PAUSE_LOFT) tur.pausetTick++;
         else tur.tickTilbage--;
-        if (tur.tickTilbage <= 0) this._afslutTur(h, 'tiden løb ud');
+        if (tur.tickTilbage <= 0) {
+          // Løber uret ud midt i en boring, borer kunden færdig; turen
+          // slutter, når boret stopper (_redskabFaerdig).
+          if (this.aktivBaever()?.redskab) tur.tickTilbage = 0;
+          else this._afslutTur(h, 'tiden løb ud');
+        }
         break;
       }
 
@@ -523,7 +683,10 @@ class Verden {
         // Går kunden stadig, mens tilbagetogsuret løber, er turen ikke slut:
         // ellers kappede en hurtig ro tilbagetoget over midt i et skridt.
         const traekker = this.accepterBevaegelse() && (this.holdt & (K.VENSTRE | K.HOEJRE));
-        if (TU.erIRo(this) && !traekker) {
+        // Minen: turen venter på HELE tilbagetoget, også når verden er i ro,
+        // så man kan nå væk, før den bliver skarp.
+        const venter = tur.fuldtTilbagetog && tur.retreatTil !== null && this.tick < tur.retreatTil;
+        if (TU.erIRo(this) && !traekker && !venter) {
           tur.roTael++;
           if (tur.roTael >= TU.RO_HYSTERESE) { tur.tilstand = T.SKADE; tur.tilstandTick = 0; }
         } else {
@@ -575,7 +738,10 @@ class Verden {
   /** Oversæt holdte taster til bevægelse. Én gang per tick. */
   _styr(h, kunBevaegelse = false) {
     const b = this.aktivBaever();
-    if (!b || b.doed || b.redskab) return;
+    if (!b || b.doed) return;
+    // Boret styres af de samme taster (behaviours.skridtRedskab); et hop
+    // trykket under boringen skal ikke udløses bagefter.
+    if (b.redskab) { this.holdt &= ~(K.HOP | K.SALTO); return; }
     const k = this.holdt;
 
     if (k & K.VENSTRE) { b.retning = -1; F.gaa(this.terraen, b, -1); }
@@ -617,19 +783,34 @@ class Verden {
     this.tur.tilstand = T.TUR_START;
     this.tur.tilstandTick = 0;
     this.tur.turNr++;
+    this.tur.fuldtTilbagetog = false;
+    this.tur.smitteKoert = false;
     this.brugtIDenneTur = 0;
+    this.brugtPrVaaben = {};
+    this.panelAabent = false;
     this.skadeITur = false;
     this.opladning = 0;
     this.opladerNu = false;
     this.holdt = 0;
 
+    // Hjemmearbejdet slutter, når holdet er på igen.
+    for (const b of this.baevere) {
+      if (b.skjold && b.hold === naeste.holdIdx) {
+        b.skjold = false;
+        if (!b.doed) h.push({ navn: 'skjoldSlut', baever: b.id });
+      }
+    }
+
     TU.rulVind(this);
     const skift = TU.maaskeSkiftVejr(this);
 
-    // Holdets eget sidste valg — og kun hvis holdet stadig har ammunition til det.
+    // Holdets eget sidste valg — og kun hvis holdet stadig har ammunition til
+    // det. Meta (Sæt på hold, Opsig aftalen) huskes aldrig.
     const husk = this.vaabenPrHold[naeste.baever.hold];
-    this.valgtVaaben = husk?.vaaben || 'grenroer';
-    if (this.ammoFor(naeste.baever.hold, this.valgtVaaben) === 0) this.valgtVaaben = 'grenroer';
+    const huskW = VAABEN[husk?.vaaben];
+    this.valgtVaaben = huskW && huskW.kategori !== 'meta' &&
+                       this.ammoFor(naeste.baever.hold, huskW.id) !== 0
+      ? huskW.id : this._reserveVaaben(naeste.baever.hold);
     const wNu = VAABEN[this.valgtVaaben];
     this.valgtLunte = husk?.vaaben === this.valgtVaaben ? husk.lunte
                     : (wNu?.lunte ? wNu.lunte.start : 3);
@@ -650,6 +831,15 @@ class Verden {
   }
 
   _turSlut(h) {
+    // COVID gøres op én gang pr. tur, før næste tur. Dør nogen af det, skal
+    // dødsfaldene afvikles først; så kommer vi tilbage hertil, og resten af
+    // turskiftet kører (uden et nyt opgør).
+    if (!this.tur.smitteKoert) {
+      this.tur.smitteKoert = true;
+      D.smitteVedTurSlut(this, h);
+      if (this.doedskoe.length) { this.tur.tilstand = T.SKADE; this.tur.tilstandTick = 0; return; }
+    }
+
     // Kampuret tjekkes KUN her, så pludselig død aldrig afbryder midt i et skud.
     if (!this.pludseligDoed && this.tick >= this.cfg.kampTicks) {
       TU.udloesSuddenDeath(this, h);
@@ -686,20 +876,35 @@ class Verden {
     return k;
   }
 
+  /** Efter hver tur, måske: 55 % en forsyningskasse i faldskærm, 25 % en
+   *  ringende telefon, 20 % piller. Er der ikke plads til telefonen eller
+   *  pillerne, bliver det en forsyningskasse i stedet. */
   _maaskeKasse(h) {
     if (this.rngSim() > this.cfg.kasseChance) return;
-    const pladser = findStartpladser(this.terraen, this.vandNiveau);
+    const pladser = this._udstyrsPladser();
     if (!pladser.length) return;
     const p = pladser[Math.floor(this.rngSim() * pladser.length)];
     const piller = this.kasser.filter((k) => k.slags === 'helbred' && !k.doed).length;
-    // Halvdelen af gangene en telefon, ellers piller — så længe der er plads.
-    if (this.rngSim() < 0.5 && this._telefoner() < TELEFON_MAKS) {
+    const rul = this.rngSim();
+    if (rul >= 0.55 && rul < 0.80 && this._telefoner() < TELEFON_MAKS) {
       const k = this._lavTelefon(p);
       h.push({ navn: 'telefonRinger', id: k.id, x: k.x, y: k.y });
-    } else if (piller < PILLER_MAKS) {
+      return;
+    }
+    if (rul >= 0.80 && piller < PILLER_MAKS) {
       const k = this._lavPiller(p);
       h.push({ navn: 'pillerDukketOp', id: k.id, x: k.x, y: k.y });
+      return;
     }
+    const vaabenkasser = this.kasser.filter((k) => k.slags === 'vaaben' && !k.doed).length;
+    if (vaabenkasser >= VAABENKASSE_MAKS) return;
+    // Over land (en startplads), et stykke over jorden; den daler i
+    // faldskærm (physics.skridtKasse) og driver lidt med vinden.
+    const indhold = tilfaeldigtKassevaaben(this.rngSim);
+    const y = Math.min(this.terraen.h - 40, p.y + KASSE_FALDHOEJDE);
+    const k = E.lavKasse(this.nytId(), { slags: 'vaaben', indhold, x: p.x, y });
+    this.kasser.push(k);
+    h.push({ navn: 'kasseFalder', id: k.id, x: k.x, y: k.y, slags: k.slags });
   }
 
   /** Kunden tager røret: et tilfældigt opkald, og det udløser sin hændelse. */
@@ -710,25 +915,28 @@ class Verden {
     const hold = this.hold[b.hold];
     switch (o.effekt) {
       case 'forstaerkning': {
+        // Samme pulje og samme antal som forsyningskasserne.
         const id = tilfaeldigtKassevaaben(this.rngSim);
-        const nu = hold.ammo[id];
-        if (nu >= 0) hold.ammo[id] = nu + 2;
-        e.vaaben = id; e.antal = 2;
+        const antal = kasseAntal(id);
+        const nu = hold.ammo[id] ?? 0;
+        if (nu >= 0) hold.ammo[id] = nu + antal;
+        e.vaaben = id; e.antal = antal;
         h.push({ navn: 'ammoAendret', hold: b.hold, vaaben: id, ammo: hold.ammo[id] });
         break;
       }
-      case 'recept': e.hp = Math.min(E.MAKS_HP, b.hp + 30) - b.hp; b.hp += e.hp; break;
+      // Aldrig negativ: har pillerne løftet kunden over 100, tager recepten intet.
+      case 'recept': e.hp = Math.max(0, Math.min(E.MAKS_HP, b.hp + 30) - b.hp); b.hp += e.hp; break;
       case 'klage': e.hp = -15; D.givSkade(this, b, 15, 'klage', h); break;
       case 'mursten': this._stenskred(k.x, 260, 5); break;
       case 'uvejr': this._uvejr(); e.vind = this.vind; e.vejr = this.vejr; break;
       case 'spam': {
-        const pladser = this.rngSim.bland(findStartpladser(this.terraen, this.vandNiveau).slice());
+        const pladser = this.rngSim.bland(this._udstyrsPladser().slice());
         let n = 0;
         for (const p of pladser) {
           if (n >= 3) break;
           if (this.baevere.some((x) => !x.doed && Math.abs(x.x - p.x) < 80)) continue;
           this.placerede.push(E.lavPlaceret(this.nytId(), {
-            x: p.x, y: p.y + 2, lunte: 0, naerhed: 38, armering: 60,
+            x: p.x, y: p.y + 2, lunte: 0, naerhed: VAABEN.baevermine.placeret.naerhed, armering: 60,
             detonation: { radius: 52, skade: 42, knockback: 240, carve: true },
             ejer: null, ejerHold: null, sprite: 'mine',
           }));
@@ -742,6 +950,9 @@ class Verden {
           .filter((p) => Math.abs(p.x - b.x) > 400);
         if (!pladser.length) break;
         const p = pladser[Math.floor(this.rngSim() * pladser.length)];
+        // Borer kunden, slutter boret FØR flytningen — ellers gravede næste
+        // kapsel en rende fra det gamle sted til det nye.
+        if (b.redskab) { const vid = b.redskab.vaaben; B.stopRedskab(this, b, h); this._redskabFaerdig(b, vid); }
         h.push({ navn: 'teleport', baever: b.id, fraX: b.x, fraY: b.y, x: p.x, y: p.y });
         b.x = p.x; b.y = p.y; b.vx = 0; b.vy = 0; b.paaJorden = true; b.faldFra = null;
         F.frigoer(this.terraen, b);
@@ -802,7 +1013,7 @@ class Verden {
 
     } else {
       // Telefonerne kimer: op til to telefoner dukker op og ringer.
-      const pladser = findStartpladser(this.terraen, this.vandNiveau);
+      const pladser = this._udstyrsPladser();
       if (!pladser.length) return;
       let antal = 0;
       while (this._telefoner() < TELEFON_MAKS) {
@@ -851,10 +1062,14 @@ class Verden {
     // Et snapshot ankommer ved HVERT turskift. At regenerere banen hver gang
     // ville koste ~170 ms og gøre turskift til et hak. Har vi allerede det
     // rigtige terræn, afspiller vi kun de ops vi mangler.
+    // Fortets layout kommer med snapshottet (ældre snapshots: udledt af holdene).
+    const layout = snap.layout || lavLayout(snap.antalHold, snap.baevere);
     const sammeBane = this.terraen && this.terraen.w === snap.terraen.w &&
-                      this.froeBrugt === snap.froe;
+                      this.froeBrugt === snap.froe &&
+                      (this.banetype !== 'fort' || sammeLayout(this.layout, layout));
+    this.layout = layout;
     if (!sammeBane) {
-      const res = genererSpilbar(this.froe, this.banetype, Math.max(2, snap.baevere.length));
+      const res = genererSpilbar(this.froe, this.banetype, Math.max(2, snap.baevere.length), this.layout);
       this.terraen = res.terraen;
       this.startpladser = res.pladser;
       this.froeBrugt = res.froe;
@@ -864,7 +1079,7 @@ class Verden {
       const mangler = snap.terraen.ops.slice(har);
       if (snap.terraen.ops.length < har) {
         // Vi er foran serveren (kan ske efter et hul) — byg forfra.
-        const res = genererSpilbar(this.froe, this.banetype, Math.max(2, snap.baevere.length));
+        const res = genererSpilbar(this.froe, this.banetype, Math.max(2, snap.baevere.length), this.layout);
         this.terraen = res.terraen;
         this.startpladser = res.pladser;
         this.froeBrugt = res.froe;
@@ -879,7 +1094,7 @@ class Verden {
     this.hold = snap.hold.map((h) => ({ ...h }));
     this.baevere = snap.baevere.map((b) => ({ ...E.lavBaever(b.id, b.hold, b.navn, b.udseende, b.ejer), ...b }));
     this.projektiler = snap.projektiler.map((p) => ({ ...p, type: 'projektil', alder: 0, sover: p.sover }));
-    this.placerede = snap.placerede.map((p) => ({ ...p }));
+    this.placerede = snap.placerede.map((p) => ({ ...p, armerRest: E.armerRest(p) }));
     this.kasser = snap.kasser.map((k) => ({ ...k }));
     this.gravsten = snap.gravsten.map((g) => ({ ...g }));
     this.tur = { ...snap.tur };

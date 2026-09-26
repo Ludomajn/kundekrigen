@@ -12,6 +12,8 @@
  */
 'use strict';
 
+import { HOLD_ORDEN, HOLD_NAVNE, personale } from '../core/klinikker.js';
+
 export class Transport {
   constructor() { this._besked = () => {}; this._luk = () => {}; this._aaben = () => {}; }
   paaBesked(cb) { this._besked = cb; }
@@ -96,7 +98,7 @@ export class LoopbackTransport extends Transport {
 export function lavLokaltRum(profil, opsaet = {}, navnePulje = []) {
   const pid = 'p_lokal';
   const hold = [];
-  const farver = ['blaa', 'roed', 'gul', 'groen'];
+  const farver = HOLD_ORDEN;
   const antalHold = opsaet.hold || 2;
   const prHold = opsaet.baevere_pr_hold || 3;
 
@@ -109,23 +111,27 @@ export function lavLokaltRum(profil, opsaet = {}, navnePulje = []) {
     return navn;
   };
 
+  // Klinikkernes personale har faste pladser; profilens egne kunder fylder
+  // de øvrige pladser i rækkefølge.
+  let naesteForlaeg = 0;
+  const plads = (farve, i, j) => {
+    const fast = personale(farve, j);
+    if (fast) return { id: `b${i}_${j}`, ...fast, ejer: pid };
+    const forlaeg = profil.baevere[naesteForlaeg++];
+    // Har profilen færre bævere end der er pladser, må resten have deres
+    // eget navn — ellers står den samme bæver på to hold.
+    return {
+      id: `b${i}_${j}`,
+      navn: forlaeg ? forlaeg.navn : friskNavn(),
+      udseende: forlaeg ? forlaeg.udseende : {},
+      ejer: pid,                            // hotseat: én person styrer alle
+    };
+  };
+
   for (let i = 0; i < antalHold; i++) {
     hold.push({
-      id: i, farve: farver[i],
-      navn: ['Klinik Blå', 'Klinik Rød', 'Klinik Gul', 'Klinik Grøn'][i],
-      baevere: Array.from({ length: prHold }, (_, j) => {
-        const n = i * prHold + j;
-        const forlaeg = profil.baevere[n];
-        // Har profilen færre bævere end der er pladser, må resten have deres
-        // eget navn — ellers står den samme bæver på to hold.
-        const navn = forlaeg ? forlaeg.navn : friskNavn();
-        return {
-          id: `b${i}_${j}`,
-          navn,
-          udseende: forlaeg ? forlaeg.udseende : {},
-          ejer: pid,                        // hotseat: én person styrer alle
-        };
-      }),
+      id: i, farve: farver[i], navn: HOLD_NAVNE[farver[i]],
+      baevere: Array.from({ length: prHold }, (_, j) => plads(farver[i], i, j)),
     });
   }
 
@@ -136,7 +142,7 @@ export function lavLokaltRum(profil, opsaet = {}, navnePulje = []) {
     vaert: pid,
     dig: pid,
     indst: { turtid: 45, kamptid: 1800, vind: true, vejr: 'auto',
-             banetype: 'aaben', bane: (Math.random() * 2 ** 31) >>> 0,
+             banetype: 'fort', bane: (Math.random() * 2 ** 31) >>> 0,
              baevere_pr_hold: prHold },
     deltagere: [{ pid, navn: profil.spillernavn || 'Spiller', forbundet: true,
                   klar: true, tilskuer: false, ms: 0 }],
@@ -161,7 +167,11 @@ export function lavLokaltRum(profil, opsaet = {}, navnePulje = []) {
         }
         case 'navngiv': {
           const b = rum.hold.flatMap((h) => h.baevere).find((x) => x.id === m.d.baever);
-          if (b) { if (m.d.navn) b.navn = m.d.navn; if (m.d.udseende) b.udseende = m.d.udseende; }
+          // Personalet er faste roller; ingen lobby-udsendelse, ellers sender
+          // klienten sit udseende i ring.
+          if (!b || b.udseende?.fast) break;
+          if (m.d.navn) b.navn = m.d.navn;
+          if (m.d.udseende) b.udseende = m.d.udseende;
           rum.udsend(rum.lobby());
           break;
         }
@@ -190,9 +200,10 @@ export function lavLokaltRum(profil, opsaet = {}, navnePulje = []) {
     n = Math.max(2, Math.min(4, n));
     while (rum.hold.length < n) {
       const i = rum.hold.length;
-      rum.hold.push({ id: i, farve: farver[i], navn: ['Klinik Blå', 'Klinik Rød', 'Klinik Gul', 'Klinik Grøn'][i],
-                      baevere: Array.from({ length: rum.indst.baevere_pr_hold }, (_, j) => ({
-                        id: `b${i}_${j}`, navn: friskNavn(), udseende: {}, ejer: pid })) });
+      rum.hold.push({ id: i, farve: farver[i], navn: HOLD_NAVNE[farver[i]],
+                      baevere: Array.from({ length: rum.indst.baevere_pr_hold }, (_, j) => (
+                        personale(farver[i], j) ? { id: `b${i}_${j}`, ...personale(farver[i], j), ejer: pid }
+                          : { id: `b${i}_${j}`, navn: friskNavn(), udseende: {}, ejer: pid })) });
     }
     while (rum.hold.length > n) rum.hold.pop();
   }
@@ -202,7 +213,9 @@ export function lavLokaltRum(profil, opsaet = {}, navnePulje = []) {
     for (const h of rum.hold) {
       while (h.baevere.length < n) {
         const j = h.baevere.length;
-        h.baevere.push({ id: `b${h.id}_${j}`, navn: friskNavn(), udseende: {}, ejer: pid });
+        const fast = personale(h.farve, j);
+        h.baevere.push(fast ? { id: `b${h.id}_${j}`, ...fast, ejer: pid }
+          : { id: `b${h.id}_${j}`, navn: friskNavn(), udseende: {}, ejer: pid });
       }
       while (h.baevere.length > n) h.baevere.pop();
     }

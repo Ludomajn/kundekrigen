@@ -19,6 +19,10 @@
 export const LUFT = 0;
 export const JORD = 1;
 export const FJELD = 2;
+/* Murværk: fortenes mursten. Fast og destruktibelt præcis som JORD (carve
+ * springer kun FJELD over); forskellen er alene, hvordan det tegnes —
+ * mursten uden græs (terrain_view.js, kunst.js). */
+export const MUR = 3;
 
 export class Terraen {
   constructor(w, h) {

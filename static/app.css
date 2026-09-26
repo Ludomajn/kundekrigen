@@ -257,19 +257,44 @@ input[type=text]:focus{border-color:var(--kk-yellow);outline:none;box-shadow:0 0
 .vmeta{display:flex;gap:14px;justify-content:center;font-size:11.5px;color:var(--kk-ice);margin-top:2px}
 .kraftbar{width:280px;height:10px;border-radius:999px;background:rgba(255,255,255,.22);overflow:hidden}
 .kraftbar i{display:block;height:100%;background:linear-gradient(90deg,var(--kk-yellow),var(--hold-roed))}
+/* Våbenbjælken: altid ti faste pladser (1–0), så tallene står stille, også
+   når en plads er tom. Tast øverst til venstre, ammo øverst til højre,
+   navnet på højst to linjer nederst. */
 .favoritbar{display:flex;gap:4px;flex-wrap:wrap;justify-content:center}
 .fav{
-  pointer-events:auto;display:flex;flex-direction:column;align-items:center;gap:1px;
-  min-width:62px;padding:4px 6px;border:1px solid rgba(207,232,240,.22);
-  background:rgba(13,49,69,.6);color:var(--kk-ice);border-radius:var(--r-sm);cursor:pointer;
+  pointer-events:auto;position:relative;display:flex;flex-direction:column;align-items:center;
+  justify-content:flex-start;gap:2px;width:80px;height:76px;padding:6px 4px 4px;
+  border:1px solid rgba(207,232,240,.22);background:rgba(13,49,69,.64);color:var(--kk-ice);
+  border-radius:var(--r-md);cursor:pointer;font-family:var(--font);
+  transition:border-color .12s,background-color .12s;
 }
-.fav .favtast{font:700 9px/1 var(--font);color:var(--kk-yellow)}
-.fav .favnavn{font-size:9.5px;white-space:nowrap}
-.fav .favammo{font-size:9px;opacity:.8}
-.fav.valgt{background:var(--kk-yellow);color:var(--kk-deep);border-color:var(--kk-yellow)}
+.fav:hover{border-color:rgba(207,232,240,.6);background:rgba(16,84,107,.72)}
+.fav .favtast{position:absolute;top:4px;left:6px;font:800 10.5px/1 var(--font);color:var(--kk-yellow)}
+.fav .favammo{
+  position:absolute;top:3px;right:3px;min-width:16px;padding:2px 4px;border-radius:999px;
+  font:700 9.5px/1 var(--font);text-align:center;color:var(--white);background:rgba(255,255,255,.16);
+}
+.fav .favnavn{
+  width:100%;flex:0 0 auto;font:600 9.5px/1.15 var(--font);text-align:center;overflow-wrap:anywhere;hyphens:manual;
+  display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;line-clamp:2;overflow:hidden;
+}
+.fav.valgt{background:var(--kk-yellow);color:var(--kk-deep);border-color:var(--kk-yellow);
+  box-shadow:0 0 0 2px rgba(255,216,111,.35),0 6px 16px -6px rgba(255,216,111,.7)}
 .fav.valgt .favtast{color:var(--kk-deep)}
-.fav.tom{opacity:.35}
+.fav.valgt .favammo{background:rgba(13,49,69,.2);color:var(--kk-deep)}
+.fav.tom{opacity:.5;cursor:not-allowed}
+.fav.tom .favammo{background:rgba(255,255,255,.08);color:rgba(207,232,240,.7)}
+.fav.tom:hover{border-color:rgba(207,232,240,.22);background:rgba(13,49,69,.64)}
+/* Tom plads: kun tallet og en stiplet ramme. */
+.fav.fav-plads{cursor:default;background:rgba(13,49,69,.28);border-style:dashed;border-color:rgba(207,232,240,.2)}
+.fav.fav-plads:hover{background:rgba(13,49,69,.28);border-color:rgba(207,232,240,.2)}
+.fav.fav-plads .favtast{color:rgba(255,216,111,.55)}
+.fav.fav-plads .favnavn{color:rgba(207,232,240,.45);font-weight:500}
+.favplads-ikon{width:30px;height:30px;margin-top:2px;border-radius:7px;border:1.5px dashed rgba(207,232,240,.22)}
+.fav.nej{animation:rystNej .32s ease-in-out}
+@keyframes rystNej{0%,100%{translate:0}20%{translate:-4px}40%{translate:4px}60%{translate:-3px}80%{translate:2px}}
 .hud-bund.tilskuer .favoritbar{display:none}
+.vmeta .vtom b{color:#FF8A6B}
 .vtilskuer{font:700 10px/1 var(--font);letter-spacing:.08em;text-transform:uppercase;
   color:var(--kk-ice);opacity:.75;margin-bottom:3px}
 
@@ -290,36 +315,12 @@ input[type=text]:focus{border-color:var(--kk-yellow);outline:none;box-shadow:0 0
 }
 .banner.advarsel{background:var(--hold-roed);border-color:#7A3520}
 .netstatus{
-  position:absolute;left:50%;bottom:104px;transform:translateX(-50%);
+  position:absolute;left:50%;bottom:calc(var(--bund-h, 188px) * var(--ui) + 8px);transform:translateX(-50%);
   background:rgba(122,53,32,.92);padding:6px 14px;border-radius:999px;font-size:11.5px;font-weight:600;
 }
 
-/* ---------------------------------------------------------- våbenpanel */
-.vaabenpanel{position:fixed;inset:0;z-index:35;display:grid;place-items:center;
-  background:rgba(8,33,47,.78);backdrop-filter:blur(3px)}
-.vp-kort{
-  width:min(960px,94vw);max-height:86vh;overflow:auto;background:rgba(13,49,69,.96);
-  border:1px solid rgba(207,232,240,.2);border-radius:var(--r-lg);padding:20px;color:var(--white);
-}
-.vp-hoved{display:flex;justify-content:space-between;align-items:baseline;gap:16px;margin-bottom:14px}
-.vp-hoved h2{font:900 19px/1 var(--font);margin:0}
-.vp-hint{font-size:10.5px;color:rgba(207,232,240,.7)}
-.vp-gruppe{margin-bottom:16px}
-.vp-gruppe h3{font:700 10px/1 var(--font);letter-spacing:.12em;text-transform:uppercase;
-  color:var(--kk-ice);opacity:.8;margin:0 0 7px}
-.vp-gitter{display:grid;grid-template-columns:repeat(5,1fr);gap:7px}
-.vp-celle{
-  display:flex;flex-direction:column;gap:2px;text-align:left;padding:8px 9px;
-  border:1px solid rgba(207,232,240,.22);background:rgba(255,255,255,.05);
-  color:var(--white);border-radius:var(--r-md);cursor:pointer;position:relative;min-height:74px;
-}
-.vp-celle.paa{background:var(--kk-yellow);color:var(--kk-deep);border-color:var(--kk-yellow)}
-.vp-celle.tom{opacity:.35;cursor:not-allowed}
-.vp-navn{font-weight:700;font-size:12px}
-.vp-ammo{font-size:10.5px;opacity:.85}
-.vp-tast{position:absolute;top:6px;right:8px;font:700 9px/1 var(--font);color:var(--kk-yellow)}
-.vp-celle.paa .vp-tast{color:var(--kk-deep)}
-.vp-hjaelp{font-size:9.5px;line-height:1.35;opacity:.7;margin-top:auto}
+/* ---------------------------------------------------------- våbenpanel
+   Arsenalet er en skuffe i venstre side, se "arsenalskuffen" nederst. */
 
 /* ---------------------------------------------------------- indlæser */
 .indlaeser{position:fixed;inset:0;z-index:45;display:grid;place-items:center;
@@ -339,7 +340,6 @@ input[type=text]:focus{border-color:var(--kk-yellow);outline:none;box-shadow:0 0
 @media (max-width:1100px){
   .lobby-krop{grid-template-columns:1fr}
   .opt-kolonner{grid-template-columns:1fr}
-  .vp-gitter{grid-template-columns:repeat(3,1fr)}
   .hud-hold{display:none}
 }
 @media (prefers-reduced-motion:reduce){
@@ -377,7 +377,7 @@ kbd{
   box-shadow:0 12px 34px rgba(4,20,30,.45);
 }
 .hjboble.midt{top:30%}
-.hjboble.bund{bottom:112px}
+.hjboble.bund{bottom:calc(var(--bund-h, 188px) * var(--ui) + 14px);transform-origin:bottom center}
 .hjboble::after{
   content:"";position:absolute;left:50%;bottom:-7px;transform:translateX(-50%) rotate(45deg);
   width:14px;height:14px;background:var(--kk-yellow);
@@ -428,7 +428,7 @@ kbd{
 .hn-hp{font-size:10.5px;color:var(--white);opacity:.9}
 
 .hbaever{
-  display:grid;grid-template-columns:11px 1fr 40px 24px;gap:5px;align-items:center;
+  display:grid;grid-template-columns:11px minmax(0,1fr) auto 40px 24px;gap:5px;align-items:center;
   font-size:10.5px;padding:2px 0;border-radius:3px;
 }
 .hbaever.egen .hbnavn{color:var(--white);font-weight:600}
@@ -452,8 +452,10 @@ kbd{
 
 /* Tastebjælken ligger nederst; favoritbjælken skal have plads OVER den,
    ellers overlapper de to. Polstringen er sat efter tastebjælkens højde. */
-.hud-bund{padding-bottom:52px}
-.tastebjaelke{bottom:9px;padding:4px 13px;gap:14px}
+.hud-bund{padding-bottom:calc(var(--taste-h, 36px) + 16px)}
+/* Centreret med left:50% ville den kun måtte fylde halvdelen af skærmen og
+   bryde over i to rækker — oven i våbenbjælken. max-content holder den på én. */
+.tastebjaelke{bottom:9px;padding:4px 13px;gap:14px;width:max-content;max-width:calc((100vw - 32px) / var(--ui))}
 
 @media (max-width:1100px){
   .tastebjaelke{gap:10px;font-size:9.5px}
@@ -461,25 +463,23 @@ kbd{
 }
 
 /* ---------------------------------------------------------- våbenikoner */
-.favikon{width:18px;height:18px;color:var(--kk-ice);display:block}
+.favikon{width:30px;height:30px;color:var(--kk-ice);display:block;flex:0 0 auto;margin-top:2px}
 .fav.valgt .favikon{color:var(--kk-deep)}
-.fav{min-width:66px;gap:2px}
 .vikon{width:19px;height:19px;vertical-align:-3px;margin-right:7px;color:var(--kk-yellow)}
 .vnavn{display:inline-flex;align-items:center}
-.vp-ikon{width:26px;height:26px;color:var(--kk-ice);margin-bottom:3px}
+.vp-ikon{width:44px;height:44px;color:var(--kk-ice)}
 .vp-celle.paa .vp-ikon{color:var(--kk-deep)}
 
 /* Brikkerne: spillets egne våbentegninger på en farvet flise. */
 img.vbrik{display:block;image-rendering:auto;user-select:none;
   transition:transform .15s cubic-bezier(.2,1.6,.4,1),filter .15s}
-img.favikon.vbrik{width:34px;height:34px}
+img.favikon.vbrik{width:32px;height:32px;margin-top:1px}
 img.vikon.vbrik{width:30px;height:30px;margin-right:8px}
-img.vp-ikon.vbrik{width:52px;height:52px;margin-bottom:4px}
+img.vp-ikon.vbrik{width:46px;height:46px}
 .fav.valgt img.vbrik{transform:scale(1.14) rotate(-4deg);filter:drop-shadow(0 0 6px rgba(255,216,111,.9))}
 .vp-celle.paa img.vbrik{transform:scale(1.1) rotate(-4deg)}
-.fav:hover img.vbrik{transform:scale(1.08)}
+.fav:not(.tom):hover img.vbrik{transform:scale(1.08)}
 .fav.tom img.vbrik,.vp-celle.tom img.vbrik{filter:grayscale(1) brightness(.8)}
-.vp-celle{min-height:96px}
 
 /* ---------------------------------------------------------- dybdevignet
    En let mørkning mod kanterne og en kølig tone i hjørnerne. Det er et
@@ -492,6 +492,7 @@ img.vp-ikon.vbrik{width:52px;height:52px;margin-bottom:4px}
     linear-gradient(to bottom, rgba(120,170,200,.10), rgba(0,0,0,0) 26%);
 }
 .hud-top,.hud-bund,.hud-hold,.etiketter,.banner,.netstatus{position:absolute;z-index:1}
+.hud-arsenal{position:absolute;z-index:2}
 
 /* ---------------------------------------------------------- lyd-indstilling */
 .lyd-raekke{display:flex;align-items:center;gap:12px}
@@ -501,7 +502,7 @@ img.vp-ikon.vbrik{width:52px;height:52px;margin-bottom:4px}
 .venter.advarsel{color:var(--kk-yellow);font-weight:700}
 
 /* ---- vinderfest */
-.hud.fest .hud-bund,.hud.fest .etiketter,.hud.fest .banner{display:none}
+.hud.fest .hud-bund,.hud.fest .etiketter,.hud.fest .banner,.hud.fest .hud-arsenal{display:none}
 .sejrsfest{position:fixed;inset:0;width:100%;height:100%;pointer-events:none;z-index:30}
 .sejrsfest-titel{
   position:fixed;left:0;right:0;top:16vh;z-index:31;pointer-events:none;text-align:center;
@@ -570,6 +571,7 @@ img.vp-ikon.vbrik{width:52px;height:52px;margin-bottom:4px}
 @keyframes introGo{0%{opacity:0;transform:scale(.3) rotate(8deg)}30%{opacity:1;transform:scale(1.15) rotate(-3deg)}
   45%{transform:scale(1) rotate(0)}80%{opacity:1;transform:scale(1.02)}100%{opacity:0;transform:scale(1.5)}}
 .hud.intro-aktiv .hud-bund,.hud.intro-aktiv .hud-top,.hud.intro-aktiv .hud-hold{opacity:0;transition:opacity .3s}
+.hud.intro-aktiv .hud-arsenal{opacity:0;visibility:hidden;pointer-events:none}
 @media (prefers-reduced-motion:reduce){.intro *{animation:none!important}}
 
 /* ---- DU HAR VUNDET! */
@@ -612,7 +614,7 @@ img.vp-ikon.vbrik{width:52px;height:52px;margin-bottom:4px}
 .banner{transform:translate(-50%,-50%) scale(var(--ui))}
 .hjboble{transform:translateX(-50%) scale(var(--ui));transform-origin:top center}
 .tastebjaelke{transform:translateX(-50%) scale(var(--ui));transform-origin:bottom center}
-.menukort,.vp-kort,.ov-kort{zoom:var(--ui)}
+.menukort,.ov-kort{zoom:var(--ui)}
 
 /* ---- kamerastyringen i tastebjælken */
 .tb-skille{font:800 9px/1 var(--font);letter-spacing:.14em;text-transform:uppercase;color:rgba(207,232,240,.55);
@@ -637,3 +639,173 @@ img.vp-ikon.vbrik{width:52px;height:52px;margin-bottom:4px}
 .hl-skydere span{min-width:52px}
 .hl-skydere input{width:110px;accent-color:var(--kk-yellow)}
 .lobby-start{display:flex;gap:10px;flex-wrap:wrap}
+
+/* ---------------------------------------------------------- arsenalskuffen
+   "Flere våben": hele arsenalet i en skuffe, der glider ind fra venstre OVER
+   spillet, mellem topbjælken og våbenbjælken — ikke et centreret vindue, så
+   kunden, vinden og banen stadig kan ses. Håndtaget sidder på venstre kant og
+   følger skuffens kant, når den er åben. Højre kant er holdlistens og
+   lydknappens. --ui skalerer skuffen fra dens øverste venstre hjørne, og
+   --bund-h (målt i hud.js) holder den fri af bjælken. */
+:root{
+  --skuffe-top:calc(72px * var(--ui));
+  --skuffe-bund:calc(var(--bund-h, 188px) * var(--ui) + 10px);
+  --skuffe-b:min(440px, calc((100vw - 64px) / var(--ui)));   /* uskaleret bredde */
+}
+.vaabenpanel{
+  position:fixed;left:0;top:var(--skuffe-top);z-index:35;width:var(--skuffe-b);
+  /* Aldrig højere end pladsen mellem top-HUD'en og bjælken (indholdet scroller). */
+  height:max(120px, calc((100vh - var(--skuffe-top) - var(--skuffe-bund)) / var(--ui)));
+  transform-origin:top left;transform:translateX(calc(-100% * var(--ui) - 32px)) scale(var(--ui));
+  visibility:hidden;pointer-events:none;
+  transition:transform .22s cubic-bezier(.5,0,.9,.5),visibility 0s linear .22s;
+}
+.vaabenpanel.aaben{
+  transform:translateX(0) scale(var(--ui));visibility:visible;pointer-events:auto;
+  transition:transform .32s cubic-bezier(.2,1.1,.3,1),visibility 0s;
+}
+/* Skuffen følger bjælken: væk for tilskuere, under introen og til festen.
+   #panel er søster til #hud, så reglerne hænger på #hud's klasser. */
+.hud.hud-tilskuer ~ .vaabenpanel,.hud.intro-aktiv ~ .vaabenpanel,.hud.fest ~ .vaabenpanel{
+  transform:translateX(calc(-100% * var(--ui) - 32px)) scale(var(--ui));visibility:hidden;pointer-events:none;
+}
+.vp-kort{
+  height:100%;display:flex;flex-direction:column;overflow:hidden;color:var(--white);
+  background:linear-gradient(180deg,rgba(16,84,107,.95),rgba(13,49,69,.96) 40%);
+  border:1px solid rgba(207,232,240,.24);border-left:0;border-radius:0 var(--r-lg) var(--r-lg) 0;
+  box-shadow:18px 0 44px -18px rgba(4,20,30,.85);backdrop-filter:blur(6px);
+}
+.vp-hoved{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;padding:14px 12px 4px 16px}
+.vp-hoved h2{font:900 18px/1.1 var(--font);margin:0}
+.vp-under{font-size:10.5px;color:rgba(207,232,240,.8);margin-top:4px}
+.vp-luk{
+  flex:0 0 auto;width:32px;height:32px;padding:0;border-radius:50%;display:grid;place-items:center;
+  border:1px solid rgba(207,232,240,.3);background:rgba(13,49,69,.7);color:var(--kk-ice);cursor:pointer;
+}
+.vp-luk svg{width:12px;height:18px}
+.vp-luk:hover,.vp-luk:focus-visible{border-color:var(--kk-yellow);color:var(--kk-yellow)}
+.vp-hint{padding:4px 16px 10px;font-size:10px;line-height:2;color:rgba(207,232,240,.72);
+  border-bottom:1px solid rgba(207,232,240,.14)}
+.vp-hint kbd{min-width:15px;padding:0 4px;font-size:9px;line-height:1.45}
+.vp-krop{
+  position:relative;flex:1 1 auto;min-height:0;overflow-y:auto;overscroll-behavior:contain;
+  padding:12px 12px 14px 16px;scrollbar-width:thin;scrollbar-color:rgba(207,232,240,.35) transparent;
+}
+.vp-gruppe{margin-bottom:14px}
+.vp-gruppe:last-child{margin-bottom:0}
+.vp-gruppe h3{
+  display:flex;align-items:center;gap:8px;margin:0 0 8px;
+  font:800 9.5px/1 var(--font);letter-spacing:.14em;text-transform:uppercase;color:var(--kk-ice);opacity:.85;
+}
+.vp-gruppe h3::after{content:"";flex:1;height:1px;background:rgba(207,232,240,.16)}
+.vp-gitter{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px}
+.vp-celle{
+  position:relative;display:grid;grid-template-columns:46px minmax(0,1fr);grid-template-rows:auto auto 1fr auto;
+  column-gap:9px;row-gap:3px;align-items:start;min-height:104px;padding:8px 9px;text-align:left;
+  border:1px solid rgba(207,232,240,.2);background:rgba(255,255,255,.05);color:var(--white);
+  border-radius:var(--r-md);cursor:pointer;font-family:var(--font);
+}
+.vp-celle > .vp-ikon{grid-column:1;grid-row:1 / span 2}
+.vp-navn{
+  grid-column:2;grid-row:1;padding-right:22px;font:700 12px/1.2 var(--font);overflow-wrap:anywhere;
+  display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;line-clamp:2;overflow:hidden;
+}
+.vp-info{grid-column:2;grid-row:2;display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+.vp-ammo{font:700 10.5px/1 var(--font);padding:2.5px 6px;border-radius:999px;background:rgba(255,255,255,.14)}
+.vp-haand{display:none;font:800 8.5px/1 var(--font);letter-spacing:.1em;text-transform:uppercase;color:var(--kk-yellow)}
+.vp-celle.valgt .vp-haand{display:inline}
+.vp-hjaelp{
+  grid-column:1 / -1;grid-row:3;margin-top:3px;font-size:9.5px;line-height:1.38;opacity:.78;
+  display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:4;line-clamp:4;overflow:hidden;
+}
+.vp-laas{grid-column:1 / -1;grid-row:4;font:700 9.5px/1.2 var(--font);color:var(--kk-yellow)}
+.vp-laas:empty{display:none}
+/* Bjælketasten: den plads, våbnet ligger på. */
+.vp-tast{
+  position:absolute;top:6px;right:6px;min-width:18px;height:18px;padding:0 4px;border-radius:5px;
+  display:grid;place-items:center;font:800 10.5px/1 var(--font);color:var(--kk-deep);background:var(--kk-yellow);
+}
+.vp-tast:empty{display:none}
+.vp-celle:hover{border-color:rgba(207,232,240,.5);background:rgba(255,255,255,.09)}
+.vp-celle.valgt{border-color:rgba(255,216,111,.75);box-shadow:inset 3px 0 0 var(--kk-yellow)}
+.vp-celle.paa{background:var(--kk-yellow);color:var(--kk-deep);border-color:var(--kk-yellow);
+  box-shadow:0 0 0 2px rgba(255,216,111,.35)}
+.vp-celle.paa .vp-ammo{background:rgba(13,49,69,.18)}
+.vp-celle.paa .vp-haand{color:var(--kk-deep)}
+.vp-celle.paa .vp-tast{background:var(--kk-deep);color:var(--kk-yellow)}
+.vp-celle.paa .vp-laas{color:#8A3A12}
+.vp-celle.tom{cursor:not-allowed}
+.vp-celle.tom > :not(.vp-laas):not(.vp-tast){opacity:.5}
+.vp-celle.tom.paa > :not(.vp-laas):not(.vp-tast){opacity:.72}
+.vp-celle.nej{animation:rystNej .32s ease-in-out}
+.vp-celle.bundet .vp-tast{animation:bundetPuls .6s cubic-bezier(.2,1.6,.4,1)}
+@keyframes bundetPuls{0%{transform:scale(.3)}60%{transform:scale(1.35)}100%{transform:none}}
+.vp-status{
+  flex:0 0 auto;max-height:0;overflow:hidden;padding:0 16px;font:700 11px/1.3 var(--font);
+  color:var(--kk-deep);background:var(--kk-yellow);transition:max-height .18s,padding .18s;
+}
+.vp-status.vis{max-height:44px;padding:8px 16px}
+
+/* Håndtaget "Flere våben" på venstre kant. Lodret fane med chevron, tæller
+   (brugbare våben, der ikke ligger på bjælken) og Tab — og en gul kant mod
+   højre, der siger "træk her". Det giver et lille puf, når turen begynder. */
+.hud-arsenal{
+  left:0;top:calc((var(--skuffe-top) + 100% - var(--skuffe-bund)) / 2);pointer-events:auto;cursor:pointer;
+  display:flex;flex-direction:column;align-items:center;gap:8px;padding:12px 8px 10px 6px;
+  font-family:var(--font);color:var(--white);
+  background:linear-gradient(90deg,rgba(13,49,69,.92),rgba(16,84,107,.92));
+  border:1px solid rgba(207,232,240,.32);border-left:0;border-radius:0 12px 12px 0;
+  box-shadow:4px 8px 22px -6px rgba(4,20,30,.6),inset -3px 0 0 var(--kk-yellow);
+  transform-origin:left center;transform:translateY(-50%) scale(var(--ui));
+  transition:transform .32s cubic-bezier(.2,1.1,.3,1),border-color .15s,opacity .2s,visibility 0s;
+}
+.hud-arsenal:hover,.hud-arsenal:focus-visible{border-color:var(--kk-yellow);
+  background:linear-gradient(90deg,rgba(16,84,107,.97),rgba(21,96,122,.97))}
+.ha-chevron{width:12px;height:18px;color:var(--kk-yellow);transition:transform .25s}
+.hud-arsenal:hover .ha-chevron{transform:translateX(2px)}
+.ha-tekst{writing-mode:vertical-rl;transform:rotate(180deg);white-space:nowrap;
+  font:800 11px/1 var(--font);letter-spacing:.14em;text-transform:uppercase}
+.ha-antal{
+  min-width:20px;height:20px;padding:0 5px;border-radius:999px;display:grid;place-items:center;
+  font:800 10.5px/1 var(--font);background:var(--kk-yellow);color:var(--kk-deep);box-shadow:0 0 0 2px rgba(13,49,69,.9);
+}
+.ha-antal.nul{background:rgba(255,255,255,.16);color:rgba(207,232,240,.75)}
+.ha-tast{font-size:8.5px;padding:0 4px}
+/* Våbnet i hånden ligger i skuffen, ikke på bjælken. */
+.hud-arsenal.har-valgt::after{content:"";position:absolute;top:6px;right:6px;width:7px;height:7px;border-radius:50%;
+  background:var(--kk-yellow);box-shadow:0 0 6px rgba(255,216,111,.9)}
+.hud-arsenal.aaben{transform:translateX(calc(var(--skuffe-b) * var(--ui) - 1px)) translateY(-50%) scale(var(--ui));
+  border-color:rgba(207,232,240,.24)}
+.hud-arsenal.aaben .ha-chevron{transform:rotate(180deg)}
+.hud-arsenal.aaben:hover .ha-chevron{transform:rotate(180deg) translateX(2px)}
+.hud-arsenal.puf{animation:arsenalPuf 1.5s ease-in-out .5s 1 both}
+.hud-arsenal.puf .ha-antal{animation:antalGloed 1.5s ease-in-out .5s 1}
+@keyframes arsenalPuf{0%,60%,100%{translate:0}15%{translate:8px}45%{translate:5px}}
+@keyframes antalGloed{0%,100%{box-shadow:0 0 0 2px rgba(13,49,69,.9)}30%{box-shadow:0 0 0 2px rgba(13,49,69,.9),0 0 14px 4px rgba(255,216,111,.9)}}
+.hud-arsenal.skjult{opacity:0;visibility:hidden;pointer-events:none;transition:opacity .2s,visibility 0s linear .2s}
+
+/* ---- statusikoner i holdlisten: hjemmearbejde, opdaterer, smittet */
+.hb-status{display:flex;align-items:center;gap:2px}
+.hb-ikon{width:11px;height:11px;display:block;flex:0 0 auto}
+.hb-ikon.skjold{color:#7FE3FF;filter:drop-shadow(0 0 3px rgba(127,227,255,.7))}
+.hb-ikon.opdaterer{color:#8DB8FF;animation:snur 2.4s linear infinite}
+.hb-ikon.smittet{color:#8FE07A}
+
+@media (max-width:980px){
+  .fav{width:68px;height:70px}
+  img.favikon.vbrik{width:26px;height:26px}
+  .fav .favnavn{font-size:8.5px}
+}
+/* Smalle vinduer: ti små pladser på én række — kun tal, ikon og ammo. */
+@media (max-width:760px){
+  .favoritbar{flex-wrap:nowrap;gap:3px}
+  .fav{width:40px;height:46px;padding:4px 2px 2px}
+  .fav .favnavn{display:none}
+  .fav .favtast{top:2px;left:3px;font-size:9px}
+  .fav .favammo{top:1px;right:1px;font-size:8px;padding:1px 3px;min-width:0}
+  img.favikon.vbrik{width:22px;height:22px;margin-top:8px}
+}
+@media (max-height:640px){
+  :root{--skuffe-top:calc(56px * var(--ui))}
+  .vp-hint{display:none}
+}

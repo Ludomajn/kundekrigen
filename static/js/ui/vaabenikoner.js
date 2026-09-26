@@ -17,21 +17,21 @@ const STR = 128;                 // lærredets side; vises i 24-44 px
 
 /** Hvilken tegning hvert våben får, og hvor skråt den ligger. */
 const TEGNING = {
-  grenroer:         { tegn: 'bazooka',        rot: -0.55, fyld: 1.0 },
-  egegranat:        { tegn: 'mus',            rot: -0.25, fyld: 0.7 },
-  koglebombe:       { tegn: 'tastatur',       rot: -0.3,  fyld: 0.86 },
-  splintboesse:     { tegn: 'scanner',        rot: -0.2,  fyld: 0.82 },
-  daemningsdynamit: { tegn: 'opdatering',     rot: -0.12, fyld: 0.74 },
-  baevermine:       { tegn: 'mail_alarm',     rot: -0.18, fyld: 0.74 },
-  halesmaek:        { tegn: 'ringbind',       rot: -0.28, fyld: 0.76 },
-  gnavetand:        { tegn: 'loddekolbe',     rot: -0.7,  fyld: 0.92 },
-  nedgravning:      { tegn: 'bor',            rot: -0.2,  fyld: 0.84 },
-  bjaelke:          { tegn: 'serverrack',     rot: -0.12, fyld: 0.92 },
+  grenroer:         { tegn: 'bazooka',        rot: -0.55, fyld: 1.0 },    // Tonerkanon
+  splintboesse:     { tegn: 'scanner',        rot: -0.2,  fyld: 0.82 },   // Stregkodescanner
+  daemningsdynamit: { tegn: 'opdatering',     rot: -0.12, fyld: 0.74 },   // Tvangsopdatering
+  egegranat:        { tegn: 'bombe',          rot: -0.12, fyld: 0.84 },   // Datalæk-bomben
+  koglebombe:       { tegn: 'tastatur',       rot: -0.3,  fyld: 0.86 },   // Integrations inferno
+  halesmaek:        { tegn: 'ringbind',       rot: -0.28, fyld: 0.76 },   // Klageklask
+  baevermine:       { tegn: 'mail_alarm',     rot: -0.18, fyld: 0.74 },   // Phishing-mine
+  gnavetand:        { tegn: 'laptop',         rot: -0.14, fyld: 0.9 },    // Hjemmearbejde
+  nedgravning:      { tegn: 'bor',            rot: 0.85,  fyld: 0.92 },   // Systemnedbrud: peger ned
+  gangtunnel:       { tegn: 'fjernbetjening', rot: -0.45, fyld: 0.86 },   // Fjernsupport
   papirbunke:       { tegn: 'papirbunke',     rot: -0.2,  fyld: 0.8 },
   kabelbakke:       { tegn: 'kabelbakke',     rot: -0.45, fyld: 0.94 },
   byggeskum:        { tegn: 'skumpistol',     rot: -0.15, fyld: 0.86 },
-  gangtunnel:       { tegn: 'fjernbetjening', rot: -0.45, fyld: 0.86 },
-  traestammeregn:   { tegn: 'faxmaskine',     rot: -0.18, fyld: 0.82 },
+  traestammeregn:   { tegn: 'faktura',        rot: 0.22,  fyld: 0.78 },   // Kvartalsopkrævning
+  covid:            { tegn: 'virus',          rot: 0.1,   fyld: 0.84 },   // COVID
   staa_over:        { tegn: 'telefon',        rot: -0.35, fyld: 0.86 },
   overgiv:          { tegn: 'flag',           rot: -0.15, fyld: 0.84, kat: 'fare' },
 };
@@ -42,6 +42,8 @@ const KATEGORI = {
   kast:     { top: '#8FE07A', bund: '#2E8C4A', kant: '#175029' },
   udstyr:   { top: '#6FD3F0', bund: '#1C6E9C', kant: '#0D3A55' },
   naerkamp: { top: '#C79BFF', bund: '#6A3FC4', kant: '#35196E' },
+  terraen:  { top: '#F2CE86', bund: '#A8702E', kant: '#553310' },   // byggematerialer
+  special:  { top: '#FF9AD0', bund: '#B8307A', kant: '#5C0F3C' },   // kun i forsyningskasser
   meta:     { top: '#B9C4CC', bund: '#5B6972', kant: '#2C363D' },
   fare:     { top: '#F2766B', bund: '#8E1E22', kant: '#4A0D10' },   // opsig aftalen
 };

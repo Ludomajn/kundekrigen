@@ -8,8 +8,9 @@
 'use strict';
 
 import { standardUdseende, normaliserUdseende, tegnFigur, grafikKlar, indlaesGrafik, MAKS, VALG_NAVNE } from '../render/figur_view.js';
-import { FAVORITTER } from '../sim/weapons.js';
+import { FAVORITTER, FAVORITTER_V1, VAABEN } from '../sim/weapons.js';
 import { esc } from './tekst.js';
+import { ANTAL_FAVORITTER } from './keyboard.js';
 import { holdFarve } from '../render/palette.js';
 
 const NOEGLE = 'baevere.profil.v1';
@@ -73,7 +74,7 @@ export function friskProfil() {
     v: PROFIL_V,
     spillernavn: '',
     baevere: nytHold(4),
-    favoritter: FAVORITTER.slice(),
+    favoritter: FAVORITTER.slice(0, ANTAL_FAVORITTER),
     indstillinger: { lyd: 0.7, rystelser: true, sigteassistent: false },
   };
 }
@@ -100,13 +101,52 @@ export function indlaesProfil() {
         omdoebt = true;
       }
     }
-    if (omdoebt) gemProfil(p);
-    if (!Array.isArray(p.favoritter) || !p.favoritter.length) p.favoritter = FAVORITTER.slice();
+    // Favoritbjælken rettes HER, i v1-stien: at hæve PROFIL_V ville sende
+    // profilen gennem migrer() og smide kunderne og indstillingerne væk.
+    const fav = normaliserFavoritter(p.favoritter);
+    const favAendret = !Array.isArray(p.favoritter) || fav.length !== p.favoritter.length ||
+                       fav.some((id, i) => id !== p.favoritter[i]);
+    if (favAendret) p.favoritter = fav;
+    if (omdoebt || favAendret) gemProfil(p);
     p.indstillinger = { ...friskProfil().indstillinger, ...(p.indstillinger || {}) };
     return p;
   } catch {
     return friskProfil();
   }
+}
+
+/**
+ * Favoritbjælken har ti pladser (1–0). Ældre profiler har tolv, og nogle id'er
+ * findes ikke længere (Serverracket). Reglerne:
+ *
+ *  - En uberørt gammel standardbjælke skiftes helt ud med den nye.
+ *  - Ellers beholder spilleren sin rækkefølge — og pladserne 1–0 beholder
+ *    deres våben, så tasterne sidder, hvor fingrene forventer dem. Ukendte
+ *    id'er, meta-valg og dubletter bliver til huller.
+ *  - Huller fyldes først med det, der lå på de gamle ekstrataster (+ og ´),
+ *    derefter fra standardbjælken. Resten skæres væk.
+ */
+export function normaliserFavoritter(liste) {
+  if (!Array.isArray(liste) || !liste.length) return FAVORITTER.slice(0, ANTAL_FAVORITTER);
+  if (liste.length === FAVORITTER_V1.length && liste.every((id, i) => id === FAVORITTER_V1[i])) {
+    return FAVORITTER.slice(0, ANTAL_FAVORITTER);
+  }
+  const gyldig = (id) => typeof id === 'string' && !!VAABEN[id] && VAABEN[id].kategori !== 'meta';
+  const brugt = new Set();
+  const ud = [];
+  for (let i = 0; i < ANTAL_FAVORITTER; i++) {
+    const id = liste[i];
+    if (gyldig(id) && !brugt.has(id)) { ud.push(id); brugt.add(id); } else ud.push(null);
+  }
+  const reserve = [...liste.slice(ANTAL_FAVORITTER), ...FAVORITTER];
+  for (let i = 0; i < ud.length; i++) {
+    if (ud[i]) continue;
+    const id = reserve.find((x) => gyldig(x) && !brugt.has(x));
+    if (!id) break;
+    ud[i] = id;
+    brugt.add(id);
+  }
+  return ud;
 }
 
 function migrer(gammel) {

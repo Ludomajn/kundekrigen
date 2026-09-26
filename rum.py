@@ -36,8 +36,16 @@ VAERT_STILLE_AFBRYD = 20.0
 
 TILSLUT_PR_MIN = 10
 
-HOLD_FARVER = ["blaa", "roed", "gul", "groen"]
-HOLD_NAVNE = {"blaa": "Klinik Blå", "roed": "Klinik Rød", "gul": "Klinik Gul", "groen": "Klinik Grøn"}
+# Holdene er klinikker; samme rækkefølge og navne som static/js/core/klinikker.js.
+HOLD_FARVER = ["groen", "blaa", "roed", "gul"]
+HOLD_NAVNE = {"groen": "Klinik Højhaven", "blaa": "Speciallægeselskabet Mogensen",
+              "roed": "Klinik Rød", "gul": "Klinik Gul"}
+# De to første klinikkers personale: faste pladser med eget navn og egen
+# figur (tegneseriekunde 17-22). Profilerne skifter ikke deres udseende.
+PERSONALE = {
+    "groen": [("Skrankepaven Ingrid", 16), ('Bente "Bare Rolig" Hansen', 17), ("Hansen, Dr. Hansen", 18)],
+    "blaa": [("Praktikant Trine", 19), ("Systemsygeplejerske 2.0", 20), ("Dr. Jan fra Mors", 21)],
+}
 # Sure kunder. Figurerne i et netværksrum får navne herfra, fordelt så to
 # klinikker aldrig deler et navn.
 KUNDENAVNE = ["Lægevikar Lars", "Anders Endetarm", "Hanne Lin", "Rita Lin", "Ib Uprofen", "Pia Cebo", "Anna Stesi", "Karen Tæne", "Per Forering", "Kaj Ropraktor", "Inge Fektion", "Ane Mia", "Bent Brud", "Gitte Gigt", "Mogens Migræne", "Egon Eksem", "Birgit Blodprop", "Otto Skop", "Dorthe Dryp", "Frode Fnat", "Viggo Vorte", "Sekretær Susse", "Klinik-Karen", "Sure Søren", "Overlæge Ole", "Praksis-Poul", "Tovholder Tine", "Reservelæge Bo"]
@@ -46,12 +54,23 @@ KUNDENAVNE = ["Lægevikar Lars", "Anders Endetarm", "Hanne Lin", "Rita Lin", "Ib
 def kundenavn(hid, i):
     return KUNDENAVNE[(hid * 6 + i) % len(KUNDENAVNE)]
 
+
+def ny_plads(hid, farve, i):
+    """Plads i i klinikken: personalet, hvis klinikken har det, ellers en kunde."""
+    b = Baever(f"b{hid}_{i}", kundenavn(hid, i))
+    fast = PERSONALE.get(farve, [])
+    if i < len(fast):
+        b.navn = fast[i][0]
+        b.udseende = {"v": 5, "figur": fast[i][1], "fast": True}
+    return b
+
 STANDARD_INDST = {
     "turtid": 30,
     "kamptid": 1800,
     "vind": True,
     "vejr": "auto",
     "bane": 0,
+    "banetype": "fort",
     "baevere_pr_hold": 3,
 }
 
@@ -83,7 +102,7 @@ class Hold:
     def __init__(self, hid, farve, antal):
         self.id = hid
         self.farve = farve
-        self.baevere = [Baever(f"b{hid}_{i}", kundenavn(hid, i)) for i in range(antal)]
+        self.baevere = [ny_plads(hid, farve, i) for i in range(antal)]
 
     def dict(self):
         return {"id": self.id, "farve": self.farve, "navn": HOLD_NAVNE[self.farve],
@@ -460,6 +479,10 @@ def _navngiv(conn, ctx, d):
         if not b or (b.ejer != pid and r.vaert != pid):
             conn.send_json(protokol.fejl("ikke_dit_saede"))
             return
+        # Personalet er faste roller. Ingen lobby-udsendelse, ellers sender
+        # klienten sit profil-udseende i ring.
+        if b.udseende.get("fast"):
+            return
         navn = (d.get("navn") or "").strip()[:14]
         if navn:
             b.navn = navn
@@ -496,7 +519,7 @@ def _saet_hold_stoerrelse(r, n):
     for h in r.hold:
         while len(h.baevere) < n:
             i = len(h.baevere)
-            h.baevere.append(Baever(f"b{h.id}_{i}", kundenavn(h.id, i)))
+            h.baevere.append(ny_plads(h.id, h.farve, i))
         while len(h.baevere) > n:
             h.baevere.pop()
 

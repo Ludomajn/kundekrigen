@@ -24,7 +24,9 @@ const KERNE = [
   { taster: ['↑', '↓'], hvad: 'Sigt' },
   { taster: ['MELLEMRUM'], hvad: 'Hold og slip = skyd', fremhaev: true },
   { taster: ['ENTER'], hvad: 'Hop' },
-  { taster: ['1', '…', '+'], hvad: 'Vælg våben' },
+  // Tab står ikke her: håndtaget "Flere våben" i venstre side viser det selv,
+  // og en post mere får bjælken til at bryde på 1280 px-skærme.
+  { taster: ['1', '…', '0'], hvad: 'Vælg våben' },
   { taster: ['?'], hvad: 'Alle taster' },
 ];
 
@@ -47,13 +49,15 @@ const GRUPPER = [
     ['↑ ↓', 'Hæv eller sænk sigtet'],
     ['Shift + ↑ ↓', 'Finsigte'],
     ['Mellemrum (hold)', 'Lad kraften op — slip for at affyre'],
-    ['F / Shift+F', 'Lunte 1–5 sekunder på granater'],
+    ['F / Shift+F', 'Lunte 1–5 sekunder på bomberne'],
     ['T / Shift+T', 'Spring sigtemarkøren til næste fjende'],
   ]],
   ['Våben', [
-    ['1 2 3 … 0 + ´', 'Vælg våben 1–12 fra bjælken'],
-    ['Tab', 'Åbn våbenpanelet (uret står stille)'],
-    ['Q / E', 'Forrige eller næste våben i samme kategori'],
+    ['1 2 3 … 9 0', 'Vælg våben 1–10 fra bjælken (eller klik på det)'],
+    ['Tab / Flere våben', 'Hele arsenalet i skuffen til venstre — uret står stille i op til 5 s'],
+    ['Shift + 1–0', 'I arsenalet: læg det markerede våben på den plads på bjælken'],
+    ['Q / E', 'Forrige eller næste våben på bjælken'],
+    ['Forsyningskasser', 'Våbnene har få skud. Kasser daler ned i faldskærm — gå hen og saml dem op'],
   ]],
   ['Kamera', [
     ['W A S D', 'Panorér frit'],
@@ -78,7 +82,8 @@ const FOERSTE_TUR = [
   { tekst: 'Det er din tur. Gå med ← og →.', ms: 4200, plads: 'midt' },
   { tekst: 'Sigt med ↑ og ↓ — sigtekornet viser retningen. Hop med Enter.', ms: 4600, plads: 'midt' },
   { tekst: 'Hold MELLEMRUM for at lade op. Jo længere, jo længere skyder du. Slip for at affyre.', ms: 6000, plads: 'midt' },
-  { tekst: 'Skift våben med tasterne 1–9 nederst, eller åbn hele panelet med Tab.', ms: 5200, plads: 'bund' },
+  { tekst: 'Skift våben med tasterne 1–0 på bjælken nederst. Tab — eller «Flere våben» i venstre side — åbner hele arsenalet.', ms: 5600, plads: 'bund' },
+  { tekst: 'Våbnene har få skud. Forsyningskasser daler ned i faldskærm — saml dem op, så får du mere.', ms: 5000, plads: 'bund' },
 ];
 
 export function lavHjaelp(rod) {
@@ -105,7 +110,7 @@ export function lavHjaelp(rod) {
     <div class="oversigt hide" id="hjOversigt">
       <div class="ov-kort">
         <h2>Sådan spiller du</h2>
-        <p class="ov-intro">Spillet styres udelukkende på tastatur. Du behøver ikke musen.</p>
+        <p class="ov-intro">Spillet styres udelukkende på tastatur. Du behøver ikke musen — men du kan klikke på våbenbjælken og i arsenalet.</p>
         <div class="ov-grupper">
           ${GRUPPER.map(([navn, raekker]) => `
             <section>
@@ -117,6 +122,13 @@ export function lavHjaelp(rod) {
         <p class="ov-fod">Luk med <kbd>?</kbd> eller <kbd>Esc</kbd></p>
       </div>
     </div>`;
+  // Våbenbjælken skal ligge lige over tastebjælken, uanset hvor høj den er
+  // (den kan bryde over i to rækker på smalle skærme): mål den.
+  const taster = rod.querySelector('#hjTaster');
+  if (typeof ResizeObserver === 'function' && taster) {
+    new ResizeObserver(() => document.documentElement.style.setProperty('--taste-h', `${taster.offsetHeight}px`))
+      .observe(taster);
+  }
 
   boks = rod.querySelector('#hjBoble');
   const oversigt = rod.querySelector('#hjOversigt');

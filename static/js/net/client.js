@@ -65,6 +65,24 @@ export function lavKlient(verden, transport, bus) {
     e.y = b[2] + (b[2] - a[2]) * f;
   }
 
+  /* Status, der skifter midt i turen, bæres også af deltaens flag — men en
+   * lytter på hændelsen skal kunne læse den nye værdi med det samme, og over
+   * nettet kan der gå tre tick, før næste delta kommer. */
+  function opdaterStatus(e) {
+    const b = e.baever != null ? verden.baevere.find((x) => x.id === e.baever) : null;
+    if (!b) return;
+    switch (e.navn) {
+      case 'skjoldOp': b.skjold = true; break;
+      case 'skjoldSlut': b.skjold = false; break;
+      case 'opdateringRamt': b.springOver = 1; break;
+      case 'turSprungetOver': b.springOver = 0; break;
+      case 'smittet': b.smittet = e.turer || 1; break;
+      case 'rask': b.smittet = 0; break;
+      case 'redskabStart': if (e.slags === 'bor') b.graver = true; break;
+      case 'redskabSlut': b.graver = false; break;
+    }
+  }
+
   function tjekSeq(m) {
     if (typeof m.s !== 'number') return true;
     if (sidsteSeq && m.s > sidsteSeq + 1) {
@@ -115,6 +133,7 @@ export function lavKlient(verden, transport, bus) {
               !verden.gravsten.some((g) => g.id === m.d.grav.id)) {
             verden.gravsten.push({ ...m.d.grav });
           }
+          opdaterStatus(m.d);
           bus.send(m.d.navn, m.d);
           break;
 

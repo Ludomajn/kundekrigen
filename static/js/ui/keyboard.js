@@ -1,7 +1,8 @@
 /* Kundekrigen — tastatur.
  *
  * Spillet skal kunne spilles UDELUKKENDE på tastatur, inklusive våbenvalg fra
- * et arsenal på tolv. Kernen er favoritbjælken: ét tastetryk er normaltilfældet.
+ * et arsenal på femten. Kernen er favoritbjælken med ti pladser (1–0): ét
+ * tastetryk er normaltilfældet, og resten ligger i arsenalskuffen (Tab).
  *
  * Tre mekaniske valg der betyder mere end de ser ud til:
  *
@@ -46,11 +47,15 @@ export const STANDARD_BINDING = {
   debug: ['F3'],
 };
 
+/* Ti pladser, talrækken 1–0. Minus og lighedstegn er droppet: de sidder
+ * forskelligt på danske og engelske tastaturer, og ti er nok, når resten af
+ * arsenalet er ét Tab væk. I arsenalet lægger Shift + tal et våben på pladsen. */
 export const FAVORIT_TASTER = [
-  'Digit1', 'Digit2', 'Digit3', 'Digit4', 'Digit5', 'Digit6',
-  'Digit7', 'Digit8', 'Digit9', 'Digit0', 'Minus', 'Equal',
+  'Digit1', 'Digit2', 'Digit3', 'Digit4', 'Digit5',
+  'Digit6', 'Digit7', 'Digit8', 'Digit9', 'Digit0',
 ];
-export const FAVORIT_LABELS = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '0', '+', '´'];
+export const FAVORIT_LABELS = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '0'];
+export const ANTAL_FAVORITTER = FAVORIT_TASTER.length;
 
 // Taster browseren ellers gør noget med.
 const STOP = new Set(['Tab', 'Space', 'Backspace', 'ArrowUp', 'ArrowDown',
