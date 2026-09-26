@@ -104,7 +104,8 @@ const S = {
 // aldrig venter på den. Fejler den, står farveforløbet i CSS'en alene.
 setTimeout(() => {
   malMenuScene().then((c) => c.toBlob((blob) => {
-    if (blob) menuRod.style.setProperty('--menu-kunst', `url(${URL.createObjectURL(blob)})`);
+    // På roden, så både menuen og startskærmen kan bruge illustrationen.
+    if (blob) document.documentElement.style.setProperty('--menu-kunst', `url(${URL.createObjectURL(blob)})`);
   })).catch((e) => console.warn('[menu] illustration fejlede', e));
 }, 30);
 
@@ -183,6 +184,49 @@ setInterval(() => {
   lyd.musik(S.tilstand === 'menu' || S.tilstand === 'lobby' ? 'musik_menu'
     : S.tilstand === 'spil' ? 'musik_kamp' : null);
 }, 300);
+lyd.musik('musik_menu');              // ønsket med det samme, så første tryk kan starte det
+
+/*
+ * Startskærmen. Browsere tillader først lyd efter et klik eller tastetryk, og
+ * uden den var første tryk "Lokalt spil" — så musikken først kom i
+ * opsætningen. Blokerer browseren lyden, beder vi derfor om trykket FØR
+ * forsiden: det låser lyden op (lyd.js), og menumusikken spiller fra første
+ * øjeblik. Stoler browseren på siden, springes skærmen helt over.
+ */
+function visStartskaerm(tving = false) {
+  if (!tving && lyd.lydTilladt()) return;
+  if (document.querySelector('.startskaerm')) return;
+  const skaerm = document.createElement('div');
+  skaerm.className = 'startskaerm';
+  skaerm.innerHTML = `
+    <div class="startskaerm-indhold">
+      <svg class="startskaerm-logo" viewBox="0 0 64 40" fill="currentColor" aria-hidden="true"><use href="#i-logo"/></svg>
+      <div class="startskaerm-navn">${T.titel}</div>
+      <div class="startskaerm-payoff">${T.payoff}</div>
+      <p class="startskaerm-tekst">Tryk på en tast eller klik for at starte</p>
+    </div>`;
+  document.body.appendChild(skaerm);
+  const TYPER = ['keydown', 'pointerup', 'touchend'];
+  const fjern = () => {
+    for (const t of TYPER) window.removeEventListener(t, vaek, { capture: true });
+    clearInterval(tjek);
+    skaerm.classList.add('vaek');
+    setTimeout(() => skaerm.remove(), 450);
+  };
+  function vaek(e) {
+    // Esc og modifikatortaster giver ikke browseren lov til lyd: bliv stående.
+    if (e.type === 'keydown' && (e.key === 'Escape' || ['Shift', 'Control', 'Alt', 'Meta', 'CapsLock'].includes(e.key))) return;
+    // Trykket er startskærmens — menuen bag den må ikke også reagere på det.
+    e.preventDefault();
+    e.stopImmediatePropagation();
+    fjern();
+  }
+  for (const t of TYPER) window.addEventListener(t, vaek, { capture: true });
+  // Giver browseren lov af sig selv (fx efter tidligere besøg), forsvinder den.
+  const tjek = setInterval(() => { if (!tving && lyd.lydTilladt()) fjern(); }, 250);
+}
+// Lidt tid til lyd.js' forsøg på at starte lyden ved indlæsning.
+setTimeout(visStartskaerm, 250);
 
 // Kom vi ind via et delelink, springer vi direkte til rummet.
 const dybtLink = location.pathname.match(/^\/spil\/([A-Za-z0-9]{5})\/?$/);
@@ -1427,6 +1471,7 @@ function forladKamp() {
    måde at se noget på, når fanen er skjult og rAF er suspenderet. */
 window.baevere = {
   S, bus, r,
+  visStartskaerm,                        // vis(tving=true) startskærmen, også hvor lyden er tilladt
   get verden() { return S.verden; },
   get tur() { return S.verden?.tur; },
   tegnEnFrame() {

@@ -58,6 +58,31 @@ button,input,select{font-family:inherit;font-size:inherit;color:inherit}
 .btn.stor{height:42px;padding:0 24px;font-size:15px;font-weight:700}
 .btn[disabled]{opacity:.4;cursor:not-allowed}
 
+/* ---------------------------------------------------------- startskærm
+   Vises kun, når browseren blokerer lyden: første tryk låser den op, så
+   menumusikken spiller fra forsiden. Ligger over menuen og dens illustration. */
+.startskaerm{
+  position:fixed;inset:0;z-index:60;display:grid;place-items:center;cursor:pointer;
+  background:
+    linear-gradient(180deg,rgba(8,33,47,.25) 0%,rgba(8,33,47,.72) 100%),
+    var(--menu-kunst,none) center/cover no-repeat,
+    radial-gradient(120% 90% at 22% 8%,#15607A 0%,var(--kk-primary) 34%,var(--kk-deep) 78%,#08212F 100%);
+  transition:opacity .4s ease;
+}
+.startskaerm.vaek{opacity:0}
+.startskaerm-indhold{display:flex;flex-direction:column;align-items:center;text-align:center;color:var(--white);
+  animation:startInd .6s cubic-bezier(.2,.9,.3,1.2) both}
+.startskaerm-logo{width:132px;height:83px;filter:drop-shadow(0 10px 24px rgba(4,20,30,.55))}
+.startskaerm-navn{font:900 clamp(34px,7vw,64px)/1 var(--font);letter-spacing:.16em;margin-top:18px;
+  text-shadow:0 6px 24px rgba(4,20,30,.6)}
+.startskaerm-payoff{font:400 clamp(9px,1.4vw,13px)/1 var(--font);letter-spacing:.3em;color:var(--kk-ice);margin-top:10px}
+.startskaerm-tekst{margin:44px 0 0;padding:12px 22px;border-radius:999px;font:700 15px/1 var(--font);
+  color:var(--kk-deep);background:var(--kk-yellow);box-shadow:0 10px 26px -10px rgba(255,216,111,.8);
+  animation:startPuls 1.6s ease-in-out infinite}
+@keyframes startInd{from{opacity:0;transform:translateY(14px) scale(.96)}to{opacity:1;transform:none}}
+@keyframes startPuls{0%,100%{transform:scale(1);opacity:1}50%{transform:scale(1.05);opacity:.82}}
+@media (prefers-reduced-motion:reduce){.startskaerm-indhold,.startskaerm-tekst{animation:none}}
+
 /* ---------------------------------------------------------- menu */
 .menu{
   position:fixed;inset:0;display:grid;place-items:center;padding:28px;z-index:40;

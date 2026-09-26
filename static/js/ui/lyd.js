@@ -128,6 +128,12 @@ for (const t of ['keydown', 'pointerdown', 'pointerup', 'touchend', 'click']) {
   window.addEventListener(t, laasOp, { capture: true, passive: true });
 }
 
+/** Må browseren spille lyd lige nu — eller siger den på forhånd, at den må? */
+export function lydTilladt() {
+  if (ctx?.state === 'running') return true;
+  try { return navigator.getAutoplayPolicy?.('audiocontext') === 'allowed'; } catch { return false; }
+}
+
 /* Prøv at starte lyden, så snart siden er åbnet — så menumusikken spiller,
  * når man lander på forsiden. De fleste browsere holder konteksten
  * suspenderet til første klik eller tastetryk; så starter den dér (laasOp).
