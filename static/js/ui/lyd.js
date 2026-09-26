@@ -53,31 +53,44 @@ function sikrKontekst() {
   return ctx;
 }
 
-/** Hent og afkod alle lyde. Kaldes efter første brugerhandling. */
+/** Hent og afkod alle lyde. Kaldes efter første brugerhandling.
+ *  Musikken går forrest: de 57 effekter (2 MB) venter, til menunummeret har
+ *  nok til at spille (højst 2,5 s), så de ikke deles om linjen med det. */
 function indlaes() {
   if (hentet || !sikrKontekst()) return hentet;
-  hentet = Promise.all(NAVNE.map(async (navn) => {
+  hentet = musikBuffret().then(() => Promise.all(NAVNE.map(async (navn) => {
     try {
-      const svar = await fetch(`${STI}/${navn}.ogg`);
+      // Baggrundsstemningen (1,1 MB) bruges først i kampen.
+      const svar = await fetch(`${STI}/${navn}.ogg`, { priority: navn === 'ambience' ? 'low' : 'auto' });
       buffere.set(navn, await ctx.decodeAudioData(await svar.arrayBuffer()));
     } catch { console.warn('[lyd] mangler', navn); }
-  }));
+  })));
   return hentet;
 }
 
-/** Første tastetryk/klik åbner lydvejen — browsernes autoplay-regel. */
+/** Hver brugerhandling holder lydvejen åben — browsernes autoplay-regel.
+ *
+ * Lytteren bliver siddende hele besøget. Ikke alle input giver browseren lov
+ * til lyd: et touch-tryk giver det først ved pointerup/touchend, og Cmd, Alt,
+ * Ctrl, Shift og Esc giver det aldrig. Fjernede vi lytteren efter første
+ * input, var siden tavs resten af besøget, hvis det input var et af dem.
+ * Capture, fordi tekstfelter stopper tastetryk længere nede. */
 function laasOp() {
-  if (sikrKontekst()) {
-    ctx.resume();
-    indlaes();
+  if (!sikrKontekst()) return;
+  if (ctx.state !== 'running') ctx.resume().catch(() => {});
+  // Musikken startes HER, i selve brugerhandlingen — ikke et øjeblik senere
+  // fra main.js' timer. Safari tillader kun play() inde i en brugerhandling
+  // (og låser hvert <audio> for sig); Chrome er mildere, men starter så straks.
+  if (oensket) {
+    const n = numre.get(oensket);
+    if (sporNu !== oensket) startMusik(oensket);
+    else if (n && n.el.paused) n.el.play().catch(() => {});
   }
-  window.removeEventListener('keydown', laasOp);
-  window.removeEventListener('pointerdown', laasOp);
-  window.removeEventListener('touchstart', laasOp);
+  indlaes();
 }
-window.addEventListener('keydown', laasOp);
-window.addEventListener('pointerdown', laasOp);
-window.addEventListener('touchstart', laasOp);
+for (const t of ['keydown', 'pointerdown', 'pointerup', 'touchend', 'click']) {
+  window.addEventListener(t, laasOp, { capture: true, passive: true });
+}
 
 /* Prøv at starte lyden, så snart siden er åbnet — så menumusikken spiller,
  * når man lander på forsiden. De fleste browsere holder konteksten
@@ -346,6 +359,7 @@ const SPOR = { musik_menu: 0.1, musik_kamp: 0.18 };
 const numre = new Map();             // navn -> { el, g }
 let musikVolumen = 1;
 let sporNu = null;
+let oensket = null;                  // det nummer, spillet beder om — også før lyden er låst op
 
 function nummer(navn) {
   if (numre.has(navn)) return numre.get(navn);
@@ -362,8 +376,13 @@ function nummer(navn) {
 
 /** Hvilket nummer der skal spille ('musik_menu', 'musik_kamp' eller null). */
 export function musik(spor) {
+  oensket = spor;
   if (!ctx || ctx.state !== 'running') return;
-  if (spor === sporNu) return;
+  startMusik(spor);
+}
+
+function startMusik(spor) {
+  if (!ctx || spor === sporNu) return;
   const t = ctx.currentTime;
   const gammel = sporNu && numre.get(sporNu);
   if (gammel) {
@@ -379,8 +398,24 @@ export function musik(spor) {
   clearTimeout(n.pause);
   n.el.play().catch(() => { if (sporNu === spor) sporNu = null; });   // prøves igen næste gang
   n.g.gain.cancelScheduledValues(t);
-  n.g.gain.setTargetAtTime(lydFra ? 0 : SPOR[spor] * musikVolumen, t, 0.6);
+  // Skift mellem numre toner blødt over; første start kommer hurtigt ind.
+  n.g.gain.setTargetAtTime(lydFra ? 0 : SPOR[spor] * musikVolumen, t, gammel ? 0.6 : 0.2);
 }
+
+/** Venter, til menunummeret kan spille (eller højst maksMs). */
+function musikBuffret(maksMs = 2500) {
+  const n = numre.get('musik_menu');
+  if (!n || n.el.readyState >= 3) return Promise.resolve();       // HAVE_FUTURE_DATA
+  return new Promise((ok) => {
+    const t = setTimeout(ok, maksMs);
+    n.el.addEventListener('canplay', () => { clearTimeout(t); ok(); }, { once: true });
+  });
+}
+
+// Menunummeret begynder at buffere, så snart siden er åbnet. Så er det klar,
+// når browseren tillader lyd, i stedet for først at blive hentet dér. (Står
+// efter numre/SPOR med vilje: const'erne findes ikke før denne linje.)
+if (ctx) nummer('musik_menu');
 
 /** Musikkens lydstyrke 0-1 (skyderen "Musik"). */
 export function saetMusikVolumen(v) {

@@ -42,6 +42,85 @@ mimetypes.add_type("application/javascript", ".js")
 mimetypes.add_type("image/svg+xml", ".svg")
 
 
+# ------------------------------------------------------------ modulgrafen
+#
+# Browseren opdager ES-modulerne ét importniveau ad gangen: main.js skal
+# hentes, før den ved, at renderer.js findes, og så videre — ni bølger i alt,
+# én rundtur hver. Over et mobilhotspot tog det ~4 s, og indtil sidste modul
+# er hentet, kører INTET (heller ikke musikken). Løsningen uden byggetrin:
+# serveren læser importerne selv og skriver <link rel="modulepreload"> for
+# hele grafen ind i index.html, så alt hentes i én bølge.
+
+IMPORT_RE = re.compile(
+    r"""\b(?:import|export)\b[^'"`;()]*?\bfrom\s*['"]([^'"]+)['"]"""   # import x from '…' / export * from '…'
+    r"""|\bimport\s*['"]([^'"]+)['"]""")                              # import '…'
+_graf_cache = {"urls": [], "sig": None, "links": ""}
+_graf_laas = threading.Lock()
+
+
+def _fjern_kommentarer(kode):
+    """Kommentarer kan citere importer ('import x from …'); de må ikke tælle."""
+    kode = re.sub(r"/\*.*?\*/", "", kode, flags=re.S)
+    return re.sub(r"(?m)^\s*//.*$", "", kode)
+
+
+def modulgraf(start="/js/main.js"):
+    """Alle moduler, main.js trækker ind statisk — som URL-stier, i
+    opdagelsesrækkefølge. Kun filer, der findes under static/."""
+    set_, koe = [], [start]
+    while koe:
+        url = koe.pop(0)
+        if url in set_:
+            continue
+        p = (STATIC / url.lstrip("/")).resolve()
+        if not str(p).startswith(str(STATIC)) or not p.is_file():
+            continue
+        set_.append(url)
+        try:
+            kode = _fjern_kommentarer(p.read_text("utf-8", errors="replace"))
+        except OSError:
+            continue
+        mappe = url.rsplit("/", 1)[0]
+        for m in IMPORT_RE.finditer(kode):
+            spec = m.group(1) or m.group(2)
+            if spec.startswith(("./", "../")):
+                dele = (mappe + "/" + spec).split("/")
+                ud = []
+                for d in dele:
+                    if d == "..":
+                        if ud:
+                            ud.pop()
+                    elif d not in ("", "."):
+                        ud.append(d)
+                koe.append("/" + "/".join(ud))
+            elif spec.startswith("/"):
+                koe.append(spec)
+    return set_
+
+
+def preload_links():
+    """<link>-linjerne til index.html. Genberegnes kun, når en fil i grafen
+    er ændret (en ny import kræver, at den importerende fil ændres)."""
+    def signatur(urls):
+        try:
+            return tuple((STATIC / u.lstrip("/")).stat().st_mtime_ns for u in urls)
+        except OSError:
+            return None
+
+    c = _graf_cache                        # ét opslag: (urls, sig, links) hører sammen
+    if c["urls"] and signatur(c["urls"]) == c["sig"]:
+        return c["links"]
+    with _graf_laas:                       # kun én tråd beregner; de andre venter på den
+        c = _graf_cache
+        if c["urls"] and signatur(c["urls"]) == c["sig"]:
+            return c["links"]
+        urls = modulgraf()
+        # main.js selv hentes af <script>-tagget; resten forvarmes.
+        links = "".join(f'<link rel="modulepreload" href="{u}">\n' for u in urls if u != "/js/main.js")
+        globals()["_graf_cache"] = {"urls": urls, "sig": signatur(urls), "links": links}
+        return links
+
+
 def alle_ipv4():
     """Alle maskinens IPv4-adresser undtagen loopback og link-local.
 
@@ -88,7 +167,8 @@ class App(BaseHTTPRequestHandler):
         self.send_response(kode)
         self.send_header("Content-Type", ctype)
         self.send_header("Content-Length", str(len(krop)))
-        self.send_header("Cache-Control", "no-store")
+        if "Cache-Control" not in (ekstra or {}):
+            self.send_header("Cache-Control", "no-store")
         for k, v in (ekstra or {}).items():
             self.send_header(k, v)
         self.end_headers()
@@ -109,8 +189,35 @@ class App(BaseHTTPRequestHandler):
 
     # ------------------------------------------------------------ filer
 
+    def serve_index(self):
+        """index.html med preload af hele modulgrafen (se modulgraf)."""
+        try:
+            html = (STATIC / "index.html").read_text("utf-8")
+        except OSError:
+            return self._send(404, "404 — ikke fundet".encode("utf-8"))
+        html = html.replace("</head>", preload_links() + "</head>", 1)
+        return self._send(200, html.encode("utf-8"), "text/html; charset=utf-8")
+
     def serve_file(self, p: Path):
         try:
+            st = p.stat()
+        except OSError:
+            return self._send(404, "404 — ikke fundet".encode("utf-8"))
+        # Cache med genvalidering: browseren beholder filen, men spørger hver
+        # gang, om den er ændret — et 304 uden krop, hvis ikke. Så får man
+        # altid den nyeste udgave efter et deploy, uden at hente alt igen.
+        # (Cloudflare foran Render gør ETag'en svag, når den komprimerer —
+        # derfor sammenlignes uden "W/".)
+        etag = f'"{st.st_mtime_ns:x}-{st.st_size:x}"'
+        cache = {"Cache-Control": "no-cache", "ETag": etag}
+        inm = self.headers.get("If-None-Match")
+        if inm and etag in {t.strip().removeprefix("W/") for t in inm.split(",")}:
+            self.send_response(304)
+            for k, v in cache.items():
+                self.send_header(k, v)
+            self.end_headers()
+            return
+        try:                                   # først nu: et 304 skal ikke læse filen
             data = p.read_bytes()
         except (OSError, IsADirectoryError):
             return self._send(404, "404 — ikke fundet".encode("utf-8"))
@@ -119,30 +226,36 @@ class App(BaseHTTPRequestHandler):
                                                   "application/json"):
             ctype += "; charset=utf-8"
 
-        # Range, så lyd kan spoles.
+        # Range, så lyd kan spoles. If-Range: er filen ændret siden den
+        # halve download, skal hele filen sendes — ikke et stykke af den nye.
         rng = self.headers.get("Range")
+        if rng and self.headers.get("If-Range") not in (None, etag):
+            rng = None
         if rng and rng.startswith("bytes="):
             try:
                 a, _, b = rng[6:].partition("-")
-                start = int(a) if a else 0
-                slut = int(b) if b else len(data) - 1
-                slut = min(slut, len(data) - 1)
+                if a:
+                    start = int(a)
+                    slut = min(int(b) if b else len(data) - 1, len(data) - 1)
+                else:                          # bytes=-N: de sidste N bytes
+                    start, slut = max(0, len(data) - int(b)), len(data) - 1
                 if start > slut:
                     raise ValueError
             except ValueError:
-                return self._send(416, b"416")
+                return self._send(416, b"416", ekstra={"Content-Range": f"bytes */{len(data)}"})
             bid = data[start:slut + 1]
             self.send_response(206)
             self.send_header("Content-Type", ctype)
             self.send_header("Content-Range", f"bytes {start}-{slut}/{len(data)}")
             self.send_header("Accept-Ranges", "bytes")
             self.send_header("Content-Length", str(len(bid)))
-            self.send_header("Cache-Control", "no-store")
+            for k, v in cache.items():
+                self.send_header(k, v)
             self.end_headers()
             if self.command != "HEAD":
                 self.wfile.write(bid)
             return
-        self._send(200, data, ctype, {"Accept-Ranges": "bytes"})
+        self._send(200, data, ctype, {"Accept-Ranges": "bytes", **cache})
 
     def serve_static(self, sti):
         """Spillet har undermapper (js/sim, vendor), så stien kan ikke bare
@@ -166,7 +279,7 @@ class App(BaseHTTPRequestHandler):
         if sti.startswith("/terraen/"):
             return self.serve_terraen(sti.rsplit("/", 1)[1])
         if sti in ("/", "/index.html") or RUM_STI.match(sti):
-            return self.serve_file(STATIC / "index.html")
+            return self.serve_index()
         return self.serve_static(sti)
 
     def do_HEAD(self):
@@ -272,6 +385,7 @@ def main():
     threading.Thread(target=rum.rydder_loop, daemon=True, name="rydder").start()
 
     srv = ThreadingHTTPServer((BIND, PORT), App)
+    preload_links()                            # modulgrafen beregnes nu, ikke af første besøgende
     ip = lan_ip()
     print(f"Kundekrigen kører på http://{ip}:{PORT}")
     andre = [a for a in alle_ipv4() if a != ip]
