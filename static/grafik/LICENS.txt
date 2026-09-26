@@ -1,0 +1,13 @@
+Grafikken i tanks/ er fra Kenney.nl (pakken "Tanks"), licens CC0.
+
+tegneserie/ er brugerens egne kunder, bygget på rgsdev's Cartoon Character
+Generator og pakket med vaerktoej/tegneseriekunder.py. Til internt brug.
+https://kenney.nl
+
+parallax/ er lagene fra "parallax saturated background pack", leveret af
+brugeren. Spillet er udelukkende til internt brug, og licensen er
+afklaret af brugeren.
+
+lyd/ er Kenney.nl (CC0): sfx_* fra "New Platformer Pack" samt lyde fra de
+åbne starter-kits (FPS, Racing, 3D Platformer, City Builder) på
+github.com/KenneyNL.

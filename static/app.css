@@ -1,0 +1,639 @@
+/* ============================================================
+   Kundekrigen — designsystem
+   primær #10546B · Poppins · radialt farveforløb
+   ============================================================ */
+:root{
+  --kk-primary:#10546B; --kk-deep:#0D3145; --kk-ice:#CFE8F0; --kk-yellow:#FFD86F;
+  --kk-green:#4E684E; --kk-forest:#212F22; --kk-sage:#A5B69B;
+  --kk-brown:#695B4B; --kk-espresso:#3D3123; --kk-sand:#B9AF9A;
+  --kk-grey:#5A5A5A; --kk-ink:#232323; --kk-line:#DADADA; --white:#fff;
+  /* Handlingsfarven er KUN til hovedknappen på en skærm (Start kampen, Klar):
+     en varm orange, der står ud mod de blå flader og ikke kan forveksles med
+     den gule, som markerer valg og fokus. Altid med mørk tekst (kontrast 7:1). */
+  --kk-handling:#FF7A2F; --kk-handling-hover:#FF9350; --kk-handling-kant:#C4531A; --kk-handling-tekst:#1E1610;
+  /* Teglrøden bruges til fejltilstande og Klinik Rød. */
+  --hold-blaa:#10546B; --hold-roed:#A34526; --hold-gul:#FFD86F; --hold-groen:#4E684E;
+  --ice-05:#F4F9FB; --ice-10:#EAF3F7; --line-soft:#E9EDEF; --surface-2:#F7F9FA;
+  --primary-14:rgba(16,84,107,.14);
+  --r-sm:3px; --r-md:5px; --r-lg:8px;
+  --font:"Poppins",Calibri,"Segoe UI",system-ui,sans-serif;
+  color-scheme:light;
+}
+*{box-sizing:border-box}
+html,body{height:100%;margin:0;overflow:hidden}
+body{
+  font-family:var(--font);font-size:13px;color:var(--kk-ink);background:var(--kk-deep);
+  -webkit-font-smoothing:antialiased;user-select:none;
+}
+button,input,select{font-family:inherit;font-size:inherit;color:inherit}
+.num{font-variant-numeric:tabular-nums}
+.hide{display:none!important}
+.lbl{font-size:9.5px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:var(--kk-grey)}
+:focus-visible{outline:2px solid var(--kk-yellow);outline-offset:2px}
+
+#laerred{position:fixed;inset:0;width:100%;height:100%;display:block}
+
+/* ---------------------------------------------------------- logo */
+.logo{display:flex;align-items:center;gap:11px;color:var(--white);margin-bottom:18px}
+.logo svg{width:56px;height:35px;display:block;flex:0 0 auto}
+.logo .wordmark{font-weight:900;font-size:26px;letter-spacing:.16em;line-height:1}
+.logo .payoff{font-weight:400;font-size:8px;letter-spacing:.19em;color:var(--kk-ice);margin-top:5px}
+
+/* ---------------------------------------------------------- knapper */
+/* Tre niveauer: .pri er skærmens hovedhandling (handlingsfarven), .btn er
+   et alternativ (halvgennemsigtigt), .sek er tilbage/annullér (kun kant). */
+.btn{
+  display:inline-flex;align-items:center;justify-content:center;gap:7px;height:30px;padding:0 12px;
+  border-radius:var(--r-md);font:600 12px/1 var(--font);border:1px solid rgba(207,232,240,.45);
+  background:rgba(255,255,255,.1);color:var(--white);cursor:pointer;white-space:nowrap;
+}
+.btn:hover{border-color:var(--kk-ice);background:rgba(255,255,255,.18)}
+.btn.pri{background:var(--kk-handling);border-color:var(--kk-handling-kant);color:var(--kk-handling-tekst);
+  box-shadow:inset 0 -3px 0 var(--kk-handling-kant),0 6px 18px -6px rgba(255,122,47,.6);font-weight:800}
+.btn.pri:hover{background:var(--kk-handling-hover)}
+.btn.pri:active{transform:translateY(1px);box-shadow:inset 0 -1px 0 var(--kk-handling-kant)}
+.btn.sek{background:transparent;border-color:rgba(207,232,240,.25);color:var(--kk-ice)}
+.btn.sek:hover{background:rgba(255,255,255,.08);color:var(--white)}
+.btn.sm{height:24px;padding:0 9px;font-size:11px}
+.btn.stor{height:42px;padding:0 24px;font-size:15px;font-weight:700}
+.btn[disabled]{opacity:.4;cursor:not-allowed}
+
+/* ---------------------------------------------------------- menu */
+.menu{
+  position:fixed;inset:0;display:grid;place-items:center;padding:28px;z-index:40;
+  /* Illustrationen males ved opstart (menu_kunst.js). Indtil den er klar,
+     og hvis den fejler, står farveforløbet alene. */
+  background:
+    linear-gradient(180deg,rgba(8,33,47,.10) 0%,rgba(8,33,47,.42) 100%),
+    var(--menu-kunst,none) center/cover no-repeat,
+    radial-gradient(120% 90% at 22% 8%,#15607A 0%,var(--kk-primary) 34%,var(--kk-deep) 78%,#08212F 100%);
+  overflow:auto;
+}
+.menukort{
+  width:100%;max-width:520px;background:rgba(13,49,69,.55);border:1px solid rgba(207,232,240,.18);
+  border-radius:var(--r-lg);padding:30px;backdrop-filter:blur(8px);color:var(--white);
+  box-shadow:0 30px 70px -24px rgba(4,20,30,.8);
+}
+.menu.bred .menukort{max-width:1120px}
+.menukort h2{font:900 22px/1.2 var(--font);margin:0 0 16px}
+.menukort h3{font:700 13px/1.2 var(--font);margin:0 0 10px;color:var(--kk-ice)}
+.menuliste{display:flex;flex-direction:column;gap:9px;margin-top:6px}
+.menuliste.vandret{flex-direction:row}
+.mpunkt{
+  appearance:none;border:1px solid rgba(207,232,240,.25);background:rgba(255,255,255,.06);
+  color:var(--white);border-radius:var(--r-md);padding:13px 16px;text-align:left;
+  font:600 15px/1 var(--font);cursor:pointer;transition:none;
+}
+.mpunkt:hover{background:rgba(255,255,255,.13)}
+.mpunkt.nav-paa{
+  background:var(--kk-yellow);color:var(--kk-deep);border-color:var(--kk-yellow);font-weight:700;
+}
+.mpunkt.sek{font-size:13px;opacity:.85}
+.menufod{margin:18px 0 0;font-size:11px;color:rgba(207,232,240,.65)}
+.afslutTekst{color:var(--kk-ice);line-height:1.6;margin:0 0 18px}
+
+.felt{display:flex;flex-direction:column;gap:6px;margin-bottom:14px}
+.felt .lbl{color:rgba(207,232,240,.8)}
+input[type=text]{
+  height:38px;border:1px solid rgba(207,232,240,.3);border-radius:var(--r-md);padding:0 12px;
+  background:rgba(255,255,255,.08);color:var(--white);
+}
+input[type=text]:focus{border-color:var(--kk-yellow);outline:none;box-shadow:0 0 0 3px rgba(255,216,111,.2)}
+.kodefelt{
+  font:900 26px/1 var(--font);letter-spacing:.32em;text-align:center;height:56px;text-transform:uppercase;
+}
+.fejl{
+  background:#F7E9E4;border:1px solid #E3C6B9;color:#7A3520;border-radius:var(--r-md);
+  padding:9px 11px;font-size:11.5px;margin-bottom:12px;
+}
+.spinner{
+  width:32px;height:32px;margin:20px auto;border:3px solid rgba(207,232,240,.25);
+  border-top-color:var(--kk-yellow);border-radius:50%;animation:snur .9s linear infinite;
+}
+@keyframes snur{to{transform:rotate(360deg)}}
+
+.rumliste{margin-top:18px;border-top:1px solid rgba(207,232,240,.2);padding-top:12px}
+.rumliste .tom{color:rgba(207,232,240,.6);font-size:12px;padding:8px 0}
+.rumknap{
+  display:flex;gap:10px;align-items:baseline;width:100%;margin-top:6px;padding:8px 10px;
+  background:rgba(255,255,255,.06);border:1px solid rgba(207,232,240,.2);
+  border-radius:var(--r-md);color:var(--white);cursor:pointer;text-align:left;
+}
+.rumknap b{font:900 14px/1 var(--font);letter-spacing:.16em}
+.rumknap span{font-size:11px;color:rgba(207,232,240,.75)}
+
+/* ---------------------------------------------------------- lobby */
+.lobby-top{display:flex;justify-content:space-between;align-items:flex-start;gap:24px;margin-bottom:18px}
+.rumkode{display:flex;align-items:center;gap:10px;margin-top:4px}
+.rumkode .kode{font:900 30px/1 var(--font);letter-spacing:.24em;color:var(--kk-yellow)}
+.linkvis{font-size:11px;color:rgba(207,232,240,.65);margin-top:6px;word-break:break-all}
+.kopieret{font-size:11px;color:var(--kk-yellow)}
+.lobby-handling{display:flex;flex-direction:column;align-items:flex-end;gap:8px}
+.venter{font-size:11px;color:rgba(207,232,240,.7)}
+.lobby-krop{display:grid;grid-template-columns:1fr 300px;gap:20px}
+.lobby-hold{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px;align-content:start}
+.hold-kort{
+  border:1px solid rgba(207,232,240,.2);border-left:4px solid var(--hf);
+  border-radius:var(--r-md);padding:12px;background:rgba(255,255,255,.05);
+}
+.hold-kort h3{color:var(--hf);margin-bottom:8px}
+.saede{display:grid;grid-template-columns:1fr auto auto;gap:8px;align-items:center;
+  padding:5px 0;border-top:1px solid rgba(207,232,240,.12);font-size:12px}
+.saede:first-of-type{border-top:0}
+.saede .sbaever{font-weight:600}
+.saede .sejer{font-size:10.5px;color:rgba(207,232,240,.7)}
+.saede.mit{color:var(--kk-yellow)}
+.saede.ledig .sejer{font-style:italic}
+.lobby-side{display:flex;flex-direction:column;gap:14px}
+.lobby-deltagere{border:1px solid rgba(207,232,240,.2);border-radius:var(--r-md);padding:12px}
+.lobby-deltagere .lbl{color:rgba(207,232,240,.75);display:block;margin-bottom:8px}
+.deltager{display:flex;align-items:center;gap:6px;padding:3px 0;font-size:12px}
+.deltager.vaek{opacity:.5}
+.badge{font-style:normal;font-size:9px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;
+  background:var(--kk-yellow);color:var(--kk-deep);border-radius:999px;padding:2px 7px}
+.badge.sek{background:rgba(207,232,240,.25);color:var(--kk-ice)}
+.badge.advarsel{background:var(--hold-roed);color:#fff}
+.prik-klar{width:8px;height:8px;border-radius:50%;background:#7FBF7F;margin-left:auto}
+.lobby-indst{border:1px solid rgba(207,232,240,.2);border-radius:var(--r-md);padding:12px}
+.lobby-indst.laast{opacity:.65}
+.lobby-indst .lbl{color:rgba(207,232,240,.75);display:block;margin-bottom:8px}
+.ir{display:flex;flex-direction:column;gap:4px;margin-bottom:9px;font-size:11.5px}
+.ir-valg{display:flex;flex-wrap:wrap;gap:4px}
+.ir-knap{
+  border:1px solid rgba(207,232,240,.25);background:rgba(255,255,255,.06);color:var(--kk-ice);
+  border-radius:var(--r-sm);padding:3px 8px;font-size:11px;cursor:pointer;
+}
+.ir-knap.paa{background:var(--kk-yellow);color:var(--kk-deep);border-color:var(--kk-yellow);font-weight:700}
+.ir-knap[disabled]{cursor:default;opacity:.6}
+
+/* ---------------------------------------------------------- editor */
+.opt-kolonner{display:grid;grid-template-columns:1fr 340px;gap:22px}
+.opt-boks{border:1px solid rgba(207,232,240,.2);border-radius:var(--r-md);padding:14px}
+.ed-baevere{display:flex;gap:5px;flex-wrap:wrap;margin-bottom:12px}
+.ed-fane{
+  border:1px solid rgba(207,232,240,.25);background:rgba(255,255,255,.06);color:var(--kk-ice);
+  border-radius:var(--r-sm);padding:4px 10px;font-size:11.5px;cursor:pointer;
+}
+.ed-fane.paa{background:var(--kk-yellow);color:var(--kk-deep);border-color:var(--kk-yellow);font-weight:700}
+.ed-krop{display:grid;grid-template-columns:150px 1fr;gap:16px;align-items:start}
+.ed-forhaand{
+  background:radial-gradient(circle at 50% 40%,rgba(207,232,240,.22),rgba(13,49,69,.1));
+  border:1px solid rgba(207,232,240,.2);border-radius:var(--r-md);display:grid;place-items:center;padding:8px;
+}
+.ed-forhaand canvas{width:128px;height:128px;image-rendering:auto}
+.ed-felter{display:flex;flex-direction:column;gap:7px}
+.ed-navn{display:flex;flex-direction:column;gap:5px;margin-bottom:6px}
+.ed-navn .lbl{color:rgba(207,232,240,.8)}
+.ed-raekke{display:grid;grid-template-columns:1fr auto auto auto;gap:8px;align-items:center;
+  padding:4px 6px;border-radius:var(--r-sm)}
+.ed-raekke.paa{background:rgba(255,216,111,.16)}
+.ed-raekke .lbl{color:rgba(207,232,240,.85)}
+.ed-pil{
+  width:24px;height:24px;border:1px solid rgba(207,232,240,.3);background:rgba(255,255,255,.07);
+  color:var(--kk-ice);border-radius:var(--r-sm);cursor:pointer;line-height:1;
+}
+.ed-vaerdi{font-size:11px;min-width:44px;text-align:center;color:var(--kk-ice);white-space:nowrap}
+
+.tastetabel{width:100%;border-collapse:collapse;font-size:11.5px}
+.tastetabel td{padding:4px 6px;border-top:1px solid rgba(207,232,240,.14);color:var(--kk-ice)}
+.tastetabel .tast{
+  font-weight:700;color:var(--kk-yellow);white-space:nowrap;width:98px;
+}
+
+/* ---------------------------------------------------------- sejr */
+.sejrtitel{font-size:26px!important}
+.sejrbaand{height:5px;border-radius:999px;margin:-8px 0 16px}
+.stilling{width:100%;border-collapse:collapse;margin-bottom:18px;font-size:12.5px}
+.stilling th{font-size:9px;letter-spacing:.09em;text-transform:uppercase;text-align:left;
+  color:rgba(207,232,240,.7);padding:5px 8px;border-bottom:1px solid rgba(207,232,240,.2)}
+.stilling td{padding:7px 8px;border-bottom:1px solid rgba(207,232,240,.12);color:var(--white)}
+.holdprik{display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:7px;vertical-align:-1px}
+
+/* ---------------------------------------------------------- HUD */
+.hud{position:fixed;inset:0;pointer-events:none;z-index:20;color:var(--white)}
+.hud-top{
+  position:absolute;top:0;left:0;right:0;display:grid;grid-template-columns:1fr auto 1fr;
+  align-items:start;gap:16px;padding:14px 18px;
+  background:linear-gradient(to bottom,rgba(13,49,69,.72),transparent);
+}
+.hud-aktiv{display:flex;align-items:center;gap:9px;font-weight:600;font-size:14px}
+.hud-aktiv .hpbar{width:110px;height:7px;border-radius:999px;background:rgba(255,255,255,.22);overflow:hidden}
+.hud-aktiv .hpbar i{display:block;height:100%}
+.hud-aktiv .hptal{font-size:12px;opacity:.9}
+.hud-ure{text-align:center}
+.tururet{font:900 44px/1 var(--font);text-shadow:0 2px 10px rgba(4,20,30,.6)}
+.tururet.tilbagetog{color:var(--kk-yellow)}
+.kamptid{font-size:12px;color:var(--kk-ice);opacity:.85;margin-top:2px}
+.sudden{
+  margin-top:5px;font:900 11px/1 var(--font);letter-spacing:.16em;color:#fff;
+  background:var(--hold-roed);border-radius:999px;padding:4px 11px;display:inline-block;
+}
+.hud-vind{display:flex;flex-direction:column;align-items:flex-end;gap:3px}
+.hud-vind .lbl{color:rgba(207,232,240,.8)}
+.vindpile{display:flex;gap:2px;align-items:center}
+.vindpile.v{flex-direction:row-reverse}
+.vindpil{width:17px;height:11px;color:var(--kk-ice)}
+.vindpil.spejl{transform:scaleX(-1)}
+.vindpile .stille{font-size:11px;font-style:normal;color:rgba(207,232,240,.7)}
+.vindtal{font-size:12px;font-weight:700;color:var(--kk-yellow)}
+
+.hud-hold{position:absolute;right:16px;top:96px;display:flex;flex-direction:column;gap:8px;max-width:190px}
+.holdkort{
+  background:rgba(13,49,69,.62);border-left:3px solid var(--hf);border-radius:var(--r-sm);padding:7px 9px;
+}
+.holdnavn{font:700 11px/1 var(--font);color:var(--hf);display:flex;justify-content:space-between;margin-bottom:5px}
+.holdnavn .num{color:var(--white);opacity:.85}
+.hbaever{display:grid;grid-template-columns:1fr 46px;gap:6px;align-items:center;font-size:10.5px;padding:1.5px 0}
+.hbaever.doed{opacity:.35;text-decoration:line-through}
+.hbnavn{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.hbbar{height:4px;border-radius:999px;background:rgba(255,255,255,.2);overflow:hidden}
+.hbbar i{display:block;height:100%;background:var(--hf)}
+
+.hud-bund{position:absolute;left:0;right:0;bottom:0;display:flex;flex-direction:column;
+  align-items:center;gap:7px;padding:10px 16px 12px;
+  background:linear-gradient(to top,rgba(13,49,69,.75),transparent)}
+.hud-vaaben{text-align:center}
+.vnavn{font:900 17px/1.1 var(--font)}
+.vmeta{display:flex;gap:14px;justify-content:center;font-size:11.5px;color:var(--kk-ice);margin-top:2px}
+.kraftbar{width:280px;height:10px;border-radius:999px;background:rgba(255,255,255,.22);overflow:hidden}
+.kraftbar i{display:block;height:100%;background:linear-gradient(90deg,var(--kk-yellow),var(--hold-roed))}
+.favoritbar{display:flex;gap:4px;flex-wrap:wrap;justify-content:center}
+.fav{
+  pointer-events:auto;display:flex;flex-direction:column;align-items:center;gap:1px;
+  min-width:62px;padding:4px 6px;border:1px solid rgba(207,232,240,.22);
+  background:rgba(13,49,69,.6);color:var(--kk-ice);border-radius:var(--r-sm);cursor:pointer;
+}
+.fav .favtast{font:700 9px/1 var(--font);color:var(--kk-yellow)}
+.fav .favnavn{font-size:9.5px;white-space:nowrap}
+.fav .favammo{font-size:9px;opacity:.8}
+.fav.valgt{background:var(--kk-yellow);color:var(--kk-deep);border-color:var(--kk-yellow)}
+.fav.valgt .favtast{color:var(--kk-deep)}
+.fav.tom{opacity:.35}
+.hud-bund.tilskuer .favoritbar{display:none}
+.vtilskuer{font:700 10px/1 var(--font);letter-spacing:.08em;text-transform:uppercase;
+  color:var(--kk-ice);opacity:.75;margin-bottom:3px}
+
+.etiketter{position:absolute;inset:0;pointer-events:none}
+.etiket{
+  position:absolute;top:0;left:0;display:flex;align-items:center;gap:6px;
+  padding:2px 7px;border-radius:999px;font-size:10.5px;font-weight:600;white-space:nowrap;
+  box-shadow:0 2px 8px rgba(4,20,30,.45);will-change:transform;
+}
+.etiket.aktiv{outline:2px solid var(--kk-yellow);outline-offset:1px}
+.etiket .ehp{opacity:.85;font-size:10px}
+
+.banner{
+  position:absolute;left:50%;top:38%;transform:translate(-50%,-50%);
+  background:rgba(13,49,69,.9);border:1px solid rgba(207,232,240,.25);
+  padding:11px 22px;border-radius:var(--r-lg);font:700 16px/1 var(--font);
+  box-shadow:0 14px 40px rgba(4,20,30,.55);
+}
+.banner.advarsel{background:var(--hold-roed);border-color:#7A3520}
+.netstatus{
+  position:absolute;left:50%;bottom:104px;transform:translateX(-50%);
+  background:rgba(122,53,32,.92);padding:6px 14px;border-radius:999px;font-size:11.5px;font-weight:600;
+}
+
+/* ---------------------------------------------------------- våbenpanel */
+.vaabenpanel{position:fixed;inset:0;z-index:35;display:grid;place-items:center;
+  background:rgba(8,33,47,.78);backdrop-filter:blur(3px)}
+.vp-kort{
+  width:min(960px,94vw);max-height:86vh;overflow:auto;background:rgba(13,49,69,.96);
+  border:1px solid rgba(207,232,240,.2);border-radius:var(--r-lg);padding:20px;color:var(--white);
+}
+.vp-hoved{display:flex;justify-content:space-between;align-items:baseline;gap:16px;margin-bottom:14px}
+.vp-hoved h2{font:900 19px/1 var(--font);margin:0}
+.vp-hint{font-size:10.5px;color:rgba(207,232,240,.7)}
+.vp-gruppe{margin-bottom:16px}
+.vp-gruppe h3{font:700 10px/1 var(--font);letter-spacing:.12em;text-transform:uppercase;
+  color:var(--kk-ice);opacity:.8;margin:0 0 7px}
+.vp-gitter{display:grid;grid-template-columns:repeat(5,1fr);gap:7px}
+.vp-celle{
+  display:flex;flex-direction:column;gap:2px;text-align:left;padding:8px 9px;
+  border:1px solid rgba(207,232,240,.22);background:rgba(255,255,255,.05);
+  color:var(--white);border-radius:var(--r-md);cursor:pointer;position:relative;min-height:74px;
+}
+.vp-celle.paa{background:var(--kk-yellow);color:var(--kk-deep);border-color:var(--kk-yellow)}
+.vp-celle.tom{opacity:.35;cursor:not-allowed}
+.vp-navn{font-weight:700;font-size:12px}
+.vp-ammo{font-size:10.5px;opacity:.85}
+.vp-tast{position:absolute;top:6px;right:8px;font:700 9px/1 var(--font);color:var(--kk-yellow)}
+.vp-celle.paa .vp-tast{color:var(--kk-deep)}
+.vp-hjaelp{font-size:9.5px;line-height:1.35;opacity:.7;margin-top:auto}
+
+/* ---------------------------------------------------------- indlæser */
+.indlaeser{position:fixed;inset:0;z-index:45;display:grid;place-items:center;
+  background:radial-gradient(120% 90% at 50% 30%,#15607A,var(--kk-deep) 70%,#08212F)}
+.indl-kort{text-align:center;color:var(--white)}
+.indl-pil{width:88px;height:55px;color:var(--kk-ice);animation:puls 1.4s ease-in-out infinite}
+@keyframes puls{0%,100%{opacity:.5;transform:translateX(-6px)}50%{opacity:1;transform:translateX(6px)}}
+.indl-tekst{font:700 15px/1 var(--font);margin:16px 0 12px}
+.indl-bar{width:220px;height:5px;border-radius:999px;background:rgba(255,255,255,.2);overflow:hidden;margin:0 auto}
+.indl-bar i{display:block;height:100%;width:34%;background:var(--kk-yellow);animation:glid 1.2s ease-in-out infinite}
+@keyframes glid{0%{margin-left:-34%}100%{margin-left:100%}}
+
+.noscript{position:fixed;inset:0;display:grid;place-items:center;color:#fff;
+  background:var(--kk-deep);font-size:16px;z-index:99}
+
+/* ---------------------------------------------------------- små skærme */
+@media (max-width:1100px){
+  .lobby-krop{grid-template-columns:1fr}
+  .opt-kolonner{grid-template-columns:1fr}
+  .vp-gitter{grid-template-columns:repeat(3,1fr)}
+  .hud-hold{display:none}
+}
+@media (prefers-reduced-motion:reduce){
+  *{animation:none!important;transition:none!important}
+}
+
+/* ============================================================
+   Tilføjet efter playtest: kontrolvejledning og skarpere HUD
+   ============================================================ */
+
+/* ---------------------------------------------------------- tastebjælke */
+.hjaelp{position:fixed;inset:0;pointer-events:none;z-index:24;color:var(--white)}
+.tastebjaelke{
+  position:absolute;left:50%;bottom:6px;transform:translateX(-50%);
+  display:flex;gap:16px;align-items:center;flex-wrap:wrap;justify-content:center;
+  padding:5px 14px;border-radius:999px;
+  background:rgba(8,33,47,.62);border:1px solid rgba(207,232,240,.16);
+  backdrop-filter:blur(4px);
+}
+.tb-punkt{display:flex;align-items:center;gap:5px;font-size:10.5px;color:rgba(207,232,240,.85)}
+.tb-punkt.frem{color:var(--kk-yellow);font-weight:600}
+.tb-hvad{white-space:nowrap}
+kbd{
+  display:inline-block;min-width:17px;padding:1px 5px;border-radius:3px;
+  background:rgba(255,255,255,.14);border:1px solid rgba(207,232,240,.3);
+  border-bottom-width:2px;font:600 9.5px/1.5 var(--font);color:var(--white);text-align:center;
+}
+.tb-punkt.frem kbd{background:rgba(255,216,111,.22);border-color:var(--kk-yellow);color:var(--kk-yellow)}
+
+/* ---------------------------------------------------------- hjælpebobler */
+.hjboble{
+  position:absolute;left:50%;transform:translateX(-50%);max-width:520px;
+  padding:11px 18px;border-radius:var(--r-lg);text-align:center;
+  background:var(--kk-yellow);color:var(--kk-deep);font:600 13.5px/1.45 var(--font);
+  box-shadow:0 12px 34px rgba(4,20,30,.45);
+}
+.hjboble.midt{top:30%}
+.hjboble.bund{bottom:112px}
+.hjboble::after{
+  content:"";position:absolute;left:50%;bottom:-7px;transform:translateX(-50%) rotate(45deg);
+  width:14px;height:14px;background:var(--kk-yellow);
+}
+.hjboble.bund::after{display:none}
+
+/* ---------------------------------------------------------- oversigt */
+.oversigt{
+  position:absolute;inset:0;display:grid;place-items:center;pointer-events:auto;
+  background:rgba(8,33,47,.8);backdrop-filter:blur(4px);
+}
+.ov-kort{
+  width:min(920px,92vw);max-height:86vh;overflow:auto;padding:26px;
+  background:rgba(13,49,69,.97);border:1px solid rgba(207,232,240,.22);border-radius:var(--r-lg);
+}
+.ov-kort h2{font:900 21px/1.2 var(--font);margin:0 0 4px}
+.ov-intro{font-size:12.5px;color:var(--kk-ice);margin:0 0 18px}
+.ov-grupper{display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:18px}
+.ov-grupper h3{
+  font:700 9.5px/1 var(--font);letter-spacing:.13em;text-transform:uppercase;
+  color:var(--kk-yellow);margin:0 0 7px;
+}
+.ov-grupper table{width:100%;border-collapse:collapse;font-size:11.5px}
+.ov-grupper td{padding:3.5px 4px;border-top:1px solid rgba(207,232,240,.12);color:var(--kk-ice)}
+.ov-tast{font-weight:700;color:var(--white);white-space:nowrap;width:44%}
+.ov-fod{margin:18px 0 0;font-size:11px;color:rgba(207,232,240,.7);text-align:center}
+
+/* ---------------------------------------------------------- HUD: hold */
+.hud-hold{gap:7px;max-width:216px}
+.holdkort{
+  border:1px solid transparent;border-left-width:4px;border-left-color:var(--hf);
+  transition:none;padding:8px 9px 7px;
+}
+.holdkort.mit{background:rgba(13,49,69,.78);border-color:rgba(207,232,240,.22);border-left-color:var(--hf)}
+.holdkort.aktivt{background:rgba(13,49,69,.9);box-shadow:0 0 0 1px var(--hf),0 6px 18px rgba(4,20,30,.4)}
+.holdnavn{
+  display:grid;grid-template-columns:auto 1fr auto auto auto;gap:6px;align-items:center;
+  font:700 11px/1 var(--font);color:var(--hf);margin-bottom:6px;
+}
+.hn-prik{width:8px;height:8px;border-radius:50%;background:var(--hf)}
+.hn-tekst{overflow:hidden;text-overflow:ellipsis}
+.hn-dig{
+  font-size:8px;font-weight:800;letter-spacing:.1em;padding:1.5px 5px;border-radius:999px;
+  background:var(--kk-yellow);color:var(--kk-deep);
+}
+.hn-tal{font-size:10px;color:rgba(255,255,255,.75)}
+.hn-tal i{font-style:normal;opacity:.5}
+.hn-hp{font-size:10.5px;color:var(--white);opacity:.9}
+
+.hbaever{
+  display:grid;grid-template-columns:11px 1fr 40px 24px;gap:5px;align-items:center;
+  font-size:10.5px;padding:2px 0;border-radius:3px;
+}
+.hbaever.egen .hbnavn{color:var(--white);font-weight:600}
+.hbaever.aktiv{background:rgba(255,216,111,.2);box-shadow:inset 2px 0 0 var(--kk-yellow);padding-left:2px}
+.hbaever.aktiv .hbnavn{color:var(--kk-yellow);font-weight:700}
+.hb-markoer{display:flex;align-items:center}
+.hb-markoer svg{width:10px;height:7px;color:var(--kk-yellow);fill:currentColor}
+.hb-hp{font-size:9.5px;text-align:right;opacity:.75}
+.hbaever.doed{opacity:.32}
+.hbaever.doed .hbnavn{text-decoration:line-through}
+
+/* ---------------------------------------------------------- HUD: din tur */
+.hud-aktiv.dinTur .aktivnavn{color:var(--kk-yellow)}
+.dintur-mark{
+  font-size:9px;font-weight:800;letter-spacing:.11em;padding:2.5px 8px;border-radius:999px;
+  animation:dinturPuls 1.5s ease-in-out infinite;
+}
+@keyframes dinturPuls{0%,100%{opacity:1}50%{opacity:.55}}
+.etiket.aktiv{outline:2.5px solid var(--kk-yellow);outline-offset:2px;font-weight:700}
+.etiket.egen{box-shadow:0 0 0 1.5px rgba(255,255,255,.8),0 2px 8px rgba(4,20,30,.45)}
+
+/* Tastebjælken ligger nederst; favoritbjælken skal have plads OVER den,
+   ellers overlapper de to. Polstringen er sat efter tastebjælkens højde. */
+.hud-bund{padding-bottom:52px}
+.tastebjaelke{bottom:9px;padding:4px 13px;gap:14px}
+
+@media (max-width:1100px){
+  .tastebjaelke{gap:10px;font-size:9.5px}
+  .tb-hvad{display:none}
+}
+
+/* ---------------------------------------------------------- våbenikoner */
+.favikon{width:18px;height:18px;color:var(--kk-ice);display:block}
+.fav.valgt .favikon{color:var(--kk-deep)}
+.fav{min-width:66px;gap:2px}
+.vikon{width:19px;height:19px;vertical-align:-3px;margin-right:7px;color:var(--kk-yellow)}
+.vnavn{display:inline-flex;align-items:center}
+.vp-ikon{width:26px;height:26px;color:var(--kk-ice);margin-bottom:3px}
+.vp-celle.paa .vp-ikon{color:var(--kk-deep)}
+
+/* Brikkerne: spillets egne våbentegninger på en farvet flise. */
+img.vbrik{display:block;image-rendering:auto;user-select:none;
+  transition:transform .15s cubic-bezier(.2,1.6,.4,1),filter .15s}
+img.favikon.vbrik{width:34px;height:34px}
+img.vikon.vbrik{width:30px;height:30px;margin-right:8px}
+img.vp-ikon.vbrik{width:52px;height:52px;margin-bottom:4px}
+.fav.valgt img.vbrik{transform:scale(1.14) rotate(-4deg);filter:drop-shadow(0 0 6px rgba(255,216,111,.9))}
+.vp-celle.paa img.vbrik{transform:scale(1.1) rotate(-4deg)}
+.fav:hover img.vbrik{transform:scale(1.08)}
+.fav.tom img.vbrik,.vp-celle.tom img.vbrik{filter:grayscale(1) brightness(.8)}
+.vp-celle{min-height:96px}
+
+/* ---------------------------------------------------------- dybdevignet
+   En let mørkning mod kanterne og en kølig tone i hjørnerne. Det er et
+   billigt, men effektivt greb: øjet læser midten som nærmest og kanterne
+   som længere væk, og scenen får rum uden at koste en eneste draw call. */
+.hud::before{
+  content:"";position:absolute;inset:0;pointer-events:none;z-index:0;
+  background:
+    radial-gradient(120% 88% at 50% 46%, rgba(0,0,0,0) 52%, rgba(8,26,36,.30) 88%, rgba(6,20,28,.52) 100%),
+    linear-gradient(to bottom, rgba(120,170,200,.10), rgba(0,0,0,0) 26%);
+}
+.hud-top,.hud-bund,.hud-hold,.etiketter,.banner,.netstatus{position:absolute;z-index:1}
+
+/* ---------------------------------------------------------- lyd-indstilling */
+.lyd-raekke{display:flex;align-items:center;gap:12px}
+.lyd-raekke .lbl{font:600 13px/1 var(--font);color:var(--kk-ice)}
+.lyd-raekke input[type=range]{flex:1;accent-color:var(--kk-yellow)}
+.lyd-raekke .num{min-width:44px;text-align:right}
+.venter.advarsel{color:var(--kk-yellow);font-weight:700}
+
+/* ---- vinderfest */
+.hud.fest .hud-bund,.hud.fest .etiketter,.hud.fest .banner{display:none}
+.sejrsfest{position:fixed;inset:0;width:100%;height:100%;pointer-events:none;z-index:30}
+.sejrsfest-titel{
+  position:fixed;left:0;right:0;top:16vh;z-index:31;pointer-events:none;text-align:center;
+  color:var(--white);padding:0 16px;animation:st-ind .7s cubic-bezier(.2,1.6,.4,1) both;
+  transition:opacity .4s,transform .4s;
+}
+.sejrsfest-titel .st-top{
+  display:inline-block;font:900 clamp(28px,5.4vw,64px)/1.05 var(--font);letter-spacing:-.01em;
+  padding:.18em .5em .22em;border-radius:14px;background:var(--sf,var(--kk-deep));
+  box-shadow:0 10px 40px rgba(4,20,30,.45),inset 0 -6px 0 rgba(0,0,0,.18);
+  text-shadow:0 3px 0 rgba(0,0,0,.22);
+}
+.sejrsfest-titel .st-under{
+  margin-top:12px;font:700 clamp(13px,1.6vw,18px)/1.3 var(--font);color:var(--kk-yellow);
+  text-shadow:0 2px 6px rgba(4,20,30,.7);animation:st-ind .6s .35s cubic-bezier(.2,1.4,.4,1) both;
+}
+.sejrsfest-titel.uafgjort .st-top{background:rgba(13,49,69,.85)}
+.sejrsfest-titel.ud{opacity:0;transform:translateY(-24px)}
+@keyframes st-ind{from{opacity:0;transform:scale(.4) translateY(20px)}to{opacity:1;transform:none}}
+@media (prefers-reduced-motion:reduce){.sejrsfest-titel,.sejrsfest-titel .st-under{animation:none}}
+
+/* ---- skaden tælles ned, når skuddet er afviklet */
+.skadetal{position:absolute;transform:translate(-50%,-100%);pointer-events:none;
+  font:900 22px/1 var(--font);color:#FF5A3C;
+  text-shadow:0 2px 0 #1E1610,0 -1px 0 #1E1610,2px 0 0 #1E1610,-2px 0 0 #1E1610,0 4px 10px rgba(4,20,30,.5);
+  animation:skadetal 1.7s cubic-bezier(.2,1.6,.4,1) forwards}
+.skadetal.stor{font-size:30px;color:#FF3B2F}
+@keyframes skadetal{
+  0%{opacity:0;transform:translate(-50%,-60%) scale(.3)}
+  14%{opacity:1;transform:translate(-50%,-110%) scale(1.25)}
+  28%{transform:translate(-50%,-110%) scale(1)}
+  75%{opacity:1;transform:translate(-50%,-150%) scale(1)}
+  100%{opacity:0;transform:translate(-50%,-190%) scale(.9)}}
+.etiket.ramt{animation:etiketRamt .12s linear infinite;box-shadow:0 0 0 2px #FF5A3C,0 2px 8px rgba(4,20,30,.45)}
+@keyframes etiketRamt{0%,100%{margin-left:0}25%{margin-left:-2px}75%{margin-left:2px}}
+@media (prefers-reduced-motion:reduce){.skadetal,.etiket.ramt{animation:none}}
+
+/* ---- introen: KUNDEKRIGEN STARTER OM 3 … 2 … 1 … SÆT I GANG! */
+.intro{position:fixed;inset:0;z-index:32;pointer-events:none;display:grid;place-items:center}
+.intro-bjaelke{position:absolute;left:0;right:0;height:11vh;background:#0D1B24;
+  animation:bjaelkeInd .45s cubic-bezier(.2,.9,.3,1) both}
+.intro-bjaelke.op{top:0}.intro-bjaelke.ned{bottom:0;animation-name:bjaelkeIndNed}
+.intro.slut .intro-bjaelke{animation:bjaelkeUd .5s .6s ease-in both}
+.intro.slut .intro-bjaelke.ned{animation-name:bjaelkeUdNed}
+@keyframes bjaelkeInd{from{transform:translateY(-100%)}}
+@keyframes bjaelkeIndNed{from{transform:translateY(100%)}}
+@keyframes bjaelkeUd{to{transform:translateY(-100%)}}
+@keyframes bjaelkeUdNed{to{transform:translateY(100%)}}
+.intro-scene{text-align:center}
+.intro-led{display:flex;flex-direction:column;align-items:center;gap:6px}
+.intro-titel,.intro-tal,.intro-go{font:900 clamp(40px,9vw,120px)/.95 var(--font);color:#FFD86F;letter-spacing:.02em;
+  -webkit-text-stroke:3px #1E1610;paint-order:stroke fill;
+  text-shadow:0 6px 0 #1E1610,0 12px 30px rgba(4,20,30,.55)}
+.intro-titel{font-size:clamp(38px,8vw,108px)}
+.intro-tal{font-size:clamp(90px,20vw,260px);color:#FFFFFF}
+.intro-lille{font:800 clamp(16px,2.4vw,28px)/1 var(--font);color:#FFFFFF;letter-spacing:.3em;text-transform:uppercase;
+  text-shadow:0 2px 0 #1E1610,0 4px 14px rgba(4,20,30,.6)}
+.intro-go{color:#FF5A3C;font-size:clamp(46px,11vw,150px)}
+.intro-led.slam{animation:introSlam .55s cubic-bezier(.2,1.8,.4,1) both}
+.intro-led.pop .intro-tal{animation:introPop .7s cubic-bezier(.2,1.8,.4,1) both}
+.intro-led.go{animation:introGo 1.2s cubic-bezier(.2,1.6,.4,1) both}
+@keyframes introSlam{0%{opacity:0;transform:scale(3.2) rotate(-6deg)}60%{opacity:1;transform:scale(.92) rotate(1deg)}
+  75%{transform:scale(1.04) translateX(-6px)}88%{transform:scale(1) translateX(5px)}100%{transform:none}}
+@keyframes introPop{0%{opacity:0;transform:scale(.2)}50%{opacity:1;transform:scale(1.18)}70%{transform:scale(.96)}
+  100%{opacity:.9;transform:scale(1)}}
+@keyframes introGo{0%{opacity:0;transform:scale(.3) rotate(8deg)}30%{opacity:1;transform:scale(1.15) rotate(-3deg)}
+  45%{transform:scale(1) rotate(0)}80%{opacity:1;transform:scale(1.02)}100%{opacity:0;transform:scale(1.5)}}
+.hud.intro-aktiv .hud-bund,.hud.intro-aktiv .hud-top,.hud.intro-aktiv .hud-hold{opacity:0;transition:opacity .3s}
+@media (prefers-reduced-motion:reduce){.intro *{animation:none!important}}
+
+/* ---- DU HAR VUNDET! */
+.sejrsfest-titel.mig .st-top{background:linear-gradient(180deg,#FFE58F,#F4B400);color:#1E1610;
+  font-size:clamp(40px,8vw,104px);box-shadow:0 0 0 4px #1E1610,0 0 60px rgba(255,216,111,.8),0 14px 40px rgba(4,20,30,.5);
+  text-shadow:0 3px 0 rgba(255,255,255,.5);animation:vundet 1s cubic-bezier(.2,1.8,.4,1) both, glans 1.4s 1s ease-in-out infinite alternate}
+@keyframes vundet{0%{opacity:0;transform:scale(3) rotate(-8deg)}55%{opacity:1;transform:scale(.9) rotate(2deg)}100%{transform:none}}
+@keyframes glans{to{box-shadow:0 0 0 4px #1E1610,0 0 110px rgba(255,216,111,1),0 14px 40px rgba(4,20,30,.5)}}
+
+/* ---- lydskyderne i menuen */
+.lydpanel{display:flex;flex-direction:column;gap:8px;margin-top:10px;padding:10px 14px;
+  border:1px solid rgba(207,232,240,.22);border-radius:var(--r-sm);background:rgba(13,49,69,.35)}
+.lydskyder .lbl{min-width:64px}
+.lydskyder input[type=range]{min-width:0}
+.lydskyder input.nav-paa{outline:2px solid var(--kk-yellow);outline-offset:4px;border-radius:4px}
+
+/* ---- telefonens taleboble */
+.opkaldboble{position:absolute;transform:translate(-50%,-100%);width:min(300px,80vw);pointer-events:none;
+  background:#FFFFFF;color:#1E1610;border:3px solid #1E1610;border-radius:18px;padding:10px 14px 12px;
+  box-shadow:0 6px 0 rgba(30,22,16,.25),0 10px 28px rgba(4,20,30,.4);
+  animation:bobleInd .45s cubic-bezier(.2,1.6,.4,1) both;transition:opacity .45s,transform .45s}
+.opkaldboble::after{content:"";position:absolute;left:50%;bottom:-14px;margin-left:-10px;border:10px solid transparent;
+  border-top:14px solid #1E1610;border-bottom:0}
+.opkaldboble::before{content:"";position:absolute;left:50%;bottom:-9px;margin-left:-7px;border:7px solid transparent;
+  border-top:10px solid #FFFFFF;border-bottom:0;z-index:1}
+.opkaldboble .ob-hvem{font:800 11px/1 var(--font);letter-spacing:.06em;text-transform:uppercase;color:#D8402C;margin-bottom:6px}
+.opkaldboble .ob-tekst{font:700 14px/1.3 var(--font)}
+.opkaldboble .ob-foelge{margin-top:8px;display:inline-block;font:800 12px/1 var(--font);background:#FFD86F;
+  border:2px solid #1E1610;border-radius:999px;padding:4px 9px}
+.opkaldboble.ud{opacity:0;transform:translate(-50%,-120%)}
+@keyframes bobleInd{from{opacity:0;transform:translate(-50%,-80%) scale(.6)}}
+
+/* ---- UI-størrelse (Indstillinger -> Visning). --ui sættes af main.js.
+   De faste bjælker skaleres fra deres egen kant, så de bliver i billedet;
+   kortene (menu, våbenpanel, oversigt) bruger zoom, så de stadig centreres. */
+:root{--ui:1}
+.hud-top{transform-origin:top left;transform:scale(var(--ui));width:calc(100% / var(--ui));right:auto}
+.hud-bund{transform-origin:bottom left;transform:scale(var(--ui));width:calc(100% / var(--ui));right:auto}
+.hud-hold{transform-origin:top right;transform:scale(var(--ui));top:calc(96px * var(--ui))}
+.banner{transform:translate(-50%,-50%) scale(var(--ui))}
+.hjboble{transform:translateX(-50%) scale(var(--ui));transform-origin:top center}
+.tastebjaelke{transform:translateX(-50%) scale(var(--ui));transform-origin:bottom center}
+.menukort,.vp-kort,.ov-kort{zoom:var(--ui)}
+
+/* ---- kamerastyringen i tastebjælken */
+.tb-skille{font:800 9px/1 var(--font);letter-spacing:.14em;text-transform:uppercase;color:rgba(207,232,240,.55);
+  padding-left:12px;border-left:1px solid rgba(207,232,240,.22)}
+.skadetal.plus{color:#8FE07A}
+
+/* ---- lydknappen i spillet */
+.hud-lyd{position:absolute;right:18px;top:calc(62px * var(--ui));z-index:3;pointer-events:auto;
+  display:flex;flex-direction:row-reverse;align-items:center;gap:8px;transform-origin:top right;transform:scale(var(--ui))}
+.hl-knap{width:34px;height:34px;border-radius:50%;border:1px solid rgba(207,232,240,.3);
+  background:rgba(13,49,69,.72);color:var(--white);display:grid;place-items:center;cursor:pointer;padding:0}
+.hl-knap svg{width:20px;height:20px}
+.hl-knap:hover,.hl-knap:focus-visible{border-color:var(--kk-yellow);color:var(--kk-yellow)}
+.hud-lyd .hl-kryds{display:none}
+.hud-lyd.fra .hl-kryds{display:inline}
+.hud-lyd.fra .hl-boelger{display:none}
+.hud-lyd.fra .hl-knap{color:#FF8A6B;border-color:#FF8A6B}
+.hl-skydere{display:none;flex-direction:column;gap:6px;padding:8px 12px;border-radius:12px;
+  background:rgba(13,49,69,.85);border:1px solid rgba(207,232,240,.22)}
+.hud-lyd:hover .hl-skydere,.hud-lyd:focus-within .hl-skydere{display:flex}
+.hl-skydere label{display:flex;align-items:center;gap:8px;font:600 11px/1 var(--font);color:var(--kk-ice)}
+.hl-skydere span{min-width:52px}
+.hl-skydere input{width:110px;accent-color:var(--kk-yellow)}
+.lobby-start{display:flex;gap:10px;flex-wrap:wrap}

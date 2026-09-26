@@ -1,0 +1,16 @@
+# Render.com "Blueprint": opret tjenesten med New -> Blueprint og peg på repoet.
+# Kundekrigen bruger kun Pythons standardbibliotek, så der er intet at bygge.
+services:
+  - type: web
+    name: kundekrigen
+    runtime: python
+    plan: free
+    buildCommand: echo "Kun standardbiblioteket - intet at bygge"
+    startCommand: python3 app.py
+    healthCheckPath: /api/status
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.12.8
+      # Render står foran serveren som proxy; se App.klient_ip i app.py.
+      - key: BAG_PROXY
+        value: "1"
