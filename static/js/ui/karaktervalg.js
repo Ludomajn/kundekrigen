@@ -268,7 +268,8 @@ function portraet(figur, klasse) {
  *
  * En stor figur: fighteren i bevægelse og et navneskilt. Tre kilder, i
  * denne rækkefølge (intro.json → figurer[figur]):
- *   1. valg_video (+ valg_video_safari) — et gennemsigtigt loop: <video muted loop>
+ *   1. valg_video — et gennemsigtigt WebM-loop: <video muted loop> (Safari:
+ *      valg_webp, samme loop som animeret WebP i et <img>; se kildeFor)
  *   2. portraet   — billedet med et CSS-åndedræt (.kv-aande)
  *   3. figurarket — spillets egne tomgangsframes idle_0-3, ca. 4 pr. sekund
  * Kun holdets forreste fighter (data-nr 0) får loopet; de bagved starter
@@ -285,13 +286,8 @@ const videoFejl = new Set();
 const portraetFejl = new Set();
 let vedVideoFejl = null;                // skærmens planlaeg, så en fejl tegnes om
 
-/*
- * Klippene er gennemsigtige i to udgaver: HEVC med alfa (.mov) til Safari og
- * VP9 med alfa (.webm) til resten. Browseren tager den første <source>, den
- * kan spille. WebKit (Safari og alle browsere på iOS) kan spille WebM, men
- * uden alfa — sort baggrund — så dér står HEVC først. Andre browsere får
- * WebM først: Chrome på Mac kan afkode HEVC, men ikke med sikkerhed dens alfa.
- */
+/* WebKit (Safari og alle browsere på iOS) kan ikke VP9-alfa, så dér bruges
+ * den animerede WebP i stedet for klippet (kildeFor). */
 const WEBKIT = typeof navigator !== 'undefined' && /Apple/.test(navigator.vendor || '');
 
 /** Et ledigt klip til figuren; findes der ikke et, laves et nyt. */
@@ -308,11 +304,7 @@ function lavVideo(figur) {
   for (const a of ['muted', 'loop', 'playsinline']) v.setAttribute(a, '');
   v.disablePictureInPicture = true;
   v.preload = 'auto';
-  const kilder = [
-    d.valg_video_safari && { src: MAPPE + d.valg_video_safari, type: 'video/mp4; codecs="hvc1"' },
-    d.valg_video && { src: MAPPE + d.valg_video, type: 'video/webm' },
-  ].filter(Boolean);
-  if (!WEBKIT) kilder.reverse();
+  const kilder = [d.valg_video && { src: MAPPE + d.valg_video, type: 'video/webm' }].filter(Boolean);
   for (const k of kilder) {
     const s = document.createElement('source');
     s.src = k.src; s.type = k.type;
@@ -338,7 +330,7 @@ function forvarmKlip() {
   }
   for (const r of ROSTER) {
     const d = filmData?.figurer?.[r.figur];
-    if (r.status !== 'laast' && (d?.valg_video || d?.valg_video_safari) && !videoer.has(r.figur)) lavVideo(r.figur).load();
+    if (r.status !== 'laast' && d?.valg_video && !videoer.has(r.figur)) lavVideo(r.figur).load();
   }
 }
 
@@ -361,7 +353,7 @@ function kildeFor(figur, medVideo = true) {
   if (!filmData) return 'venter';
   const d = filmData.figurer?.[figur] || {};
   if (medVideo && WEBKIT && d.valg_webp && !webpFejl.has(figur) && !reduceret()) return 'webp';
-  if (medVideo && !WEBKIT && (d.valg_video || d.valg_video_safari) && !videoFejl.has(figur)) return 'video';
+  if (medVideo && !WEBKIT && d.valg_video && !videoFejl.has(figur)) return 'video';
   if (d.portraet && !portraetFejl.has(figur)) return 'portraet';
   return 'figur';
 }

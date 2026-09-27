@@ -495,9 +495,11 @@ Tre kilder i denne rækkefølge, fra `intro.json` → `figurer[figur]`:
    Én `<video>` pr. figur genbruges (to, når samme figur står forrest på begge
    hold), og de åbne karakterers loops hentes, når skærmen åbner. Klippene
    står stille, når Karakterer-trinnet ikke vises, og når skærmen forlades.
-   WebKit (Safari og iOS) får
-   HEVC-udgaven (`.mov`) som første `<source>`, alle andre VP9 (`.webm`) —
-   Chrome på Mac kan afkode HEVC, men ikke med sikkerhed dens alfa.
+   Chrome og Firefox får VP9-loopet (`.webm`). WebKit (Safari og iOS) kan
+   ikke VP9-alfa, og HEVC-udgavens alfa viste figuren usynlig, så dér er
+   loopet en animeret WebP med alfa i et `<img>` (`intro.json` → `valg_webp`,
+   `<figur>_valg_anim.webp`, `data-kilde="webp"`). Art directorens
+   `Veo/_vaerktoej/valgloop.py` laver begge.
 2. **`portraet`:** billedet med klassen `.kv-aande` (åndedræt i CSS). Her
    starter holdkammeraterne bag den forreste.
 3. **Figurarket:** spillets egne tomgangsframes `idle_0-3` på et
