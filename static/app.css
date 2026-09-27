@@ -253,6 +253,13 @@ input[type=text]:focus{border-color:var(--kk-yellow);outline:none;box-shadow:0 0
   margin-top:5px;font:900 11px/1 var(--font);letter-spacing:.16em;color:#fff;
   background:var(--hold-roed);border-radius:999px;padding:4px 11px;display:inline-block;
 }
+/* Rundens hændelse (ui/haendelser.js): et mærke under uret, så længe den gælder. */
+.haendelse-maerke{
+  display:block;width:max-content;margin:5px auto 0;font:900 10.5px/1 var(--font);letter-spacing:.12em;
+  color:var(--kk-deep);background:var(--kk-yellow);border-radius:999px;padding:4px 11px;
+  box-shadow:0 2px 8px rgba(4,20,30,.35);
+}
+.haendelse-maerke.internet{color:#fff;background:#56646D}
 .hud-vind{display:flex;flex-direction:column;align-items:flex-end;gap:3px}
 .hud-vind .lbl{color:rgba(207,232,240,.8)}
 .vindpile{display:flex;gap:2px;align-items:center}

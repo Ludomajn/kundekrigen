@@ -47,6 +47,7 @@ export function nyTur(v) {
     roTael: 0,
     oploesningTick: 0,
     turNr: 0,
+    runde: 0,                   // hel omgang, hvor hver levende klinik har haft én tur (1 = første)
     fuldtTilbagetog: false,     // turen venter på hele tilbagetoget (minen)
     smitteKoert: false,         // COVID-opgøret er kørt for denne tur
   };
@@ -60,7 +61,10 @@ export function levendeHold(v) {
   return [...s].sort((a, b) => a - b);
 }
 
-export function naesteBaever(v) {
+/** Klinikken, der har den næste tur — uden at flytte noget. Samme regel som
+ *  naesteBaever (som bruger den), så world.js kan se, om næste tur begynder
+ *  en ny runde, før turen startes. null: ingen levende klinikker. */
+export function naesteHoldIdx(v) {
   const hold = levendeHold(v);
   if (!hold.length) return null;
 
@@ -68,16 +72,31 @@ export function naesteBaever(v) {
   for (let i = 0; i < hold.length + 1; i++) {
     idx = (idx + 1) % Math.max(1, v.antalHold);
     if (!hold.includes(idx)) continue;
-    const holdets = v.baevere.filter((b) => b.hold === idx && !b.doed);
-    if (!holdets.length) continue;
-    // Roter inden for holdet, så det ikke altid er den samme der spiller.
-    const sidst = v.sidsteBaeverPrHold[idx] ?? -1;
-    const efter = holdets.filter((b) => b.id > sidst);
-    const valgt = efter.length ? efter[0] : holdets[0];
-    v.sidsteBaeverPrHold[idx] = valgt.id;
-    return { holdIdx: idx, baever: valgt };
+    if (!v.baevere.some((b) => b.hold === idx && !b.doed)) continue;
+    return idx;
   }
   return null;
+}
+
+export function naesteBaever(v) {
+  const idx = naesteHoldIdx(v);
+  if (idx === null) return null;
+  const holdets = v.baevere.filter((b) => b.hold === idx && !b.doed);
+  // Roter inden for holdet, så det ikke altid er den samme der spiller.
+  const sidst = v.sidsteBaeverPrHold[idx] ?? -1;
+  const efter = holdets.filter((b) => b.id > sidst);
+  const valgt = efter.length ? efter[0] : holdets[0];
+  v.sidsteBaeverPrHold[idx] = valgt.id;
+  return { holdIdx: idx, baever: valgt };
+}
+
+/** Begynder næste tur en ny runde? Det gør den, når rækkefølgen slår rundt:
+ *  den næste klinik har et holdIdx ≤ den forrige turs (også når klinikker
+ *  imellem er døde). Den allerførste tur begynder runde 1. */
+export function nyRunde(v) {
+  const idx = naesteHoldIdx(v);
+  if (idx === null) return false;
+  return !(v.tur.runde > 0) || v.tur.holdIdx < 0 || idx <= v.tur.holdIdx;
 }
 
 // ---------------------------------------------------------------- ro

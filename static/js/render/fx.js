@@ -32,7 +32,6 @@ import {
 } from './objekt_view.js';
 import { lavHaandvaaben, vaabenMaal } from './kunst.js';
 import { TYNGDE as SIM_TYNGDE, VIND_ACC as SIM_VIND_ACC } from '../sim/physics.js';
-import { VAABEN } from '../sim/weapons.js';
 import { armerRest as simArmerRest } from '../sim/entities.js';
 
 const MAKS = 1400;
@@ -1038,9 +1037,6 @@ function ringTex() {
   _ringTex = lerredTex(c);
   return _ringTex;
 }
-/* Minens udløsningsradius følger våbentabellen (placeret.naerhed), så ringen
- * på jorden altid viser den rigtige afstand. */
-const MINE_RADIUS = VAABEN.baevermine?.placeret?.naerhed ?? 42;
 const MINE_BREDDE = 27;          // mailens bredde i wu — tre gange den gamle, så den ses
 /* Genstandenes tegneseriemodeller (objekt_view.js) og deres bredde i wu. */
 const OBJ = {
@@ -1129,11 +1125,7 @@ export function lavGenstandView(scene) {
     lampe.position.set((MINE_MAERKE[0] - (x0 + x1) / 2) * mo.s, (OBJEKT_FOD - MINE_MAERKE[1]) * mo.s, 0.1);
     lampe.scale.setScalar(26 * mo.s);
     g.add(lampe);
-    // Ringen viser, hvor tæt man kan komme, før den går af.
-    const ring = new Mesh(new PlaneGeometry(MINE_RADIUS * 2.1, MINE_RADIUS * 0.55),
-      new MeshBasicMaterial({ map: ringTex(), transparent: true, depthTest: false, depthWrite: false }));
-    ring.position.y = 1; ring.renderOrder = Z.fx - 1;
-    g.add(ring);
+    // (Ingen rød zone på jorden: den støjede. Mailen selv lyser, når den er skarp.)
     const skilt = new Mesh(new PlaneGeometry(26, 26),
       new MeshBasicMaterial({ map: skiltTex(), transparent: true, depthTest: false, depthWrite: false }));
     skilt.renderOrder = Z.fx - 0.5;
@@ -1142,7 +1134,7 @@ export function lavGenstandView(scene) {
     const tal = new Mesh(ENHED, new MeshBasicMaterial({ transparent: true, depthTest: false, depthWrite: false }));
     tal.renderOrder = Z.fx - 0.5; tal.visible = false;
     g.add(tal);
-    Object.assign(g.userData, { mine: true, krop: m, gloed, lampe, ring, skilt, tal, hoejde, sek: -1, foedt: null });
+    Object.assign(g.userData, { mine: true, krop: m, gloed, lampe, skilt, tal, hoejde, sek: -1, foedt: null });
     return g;
   }
 
@@ -1183,7 +1175,6 @@ export function lavGenstandView(scene) {
     saetFrame(u.krop, armeret ? 'idle_2' : blink ? 'aktiv_0' : 'idle_0');
     u.gloed.material.opacity = armeret ? 0.8 : blink ? 0.75 : 0.12;
     u.lampe.visible = taendt;
-    u.ring.material.opacity = armeret ? 0.85 : 0.2 + (blink ? 0.45 : 0);
     if (armeret) {
       u.tal.visible = false; u.skilt.visible = true;
       u.skilt.position.set(0, u.hoejde + 16 + Math.sin(t * 2 + p.id) * 1.2, 0);

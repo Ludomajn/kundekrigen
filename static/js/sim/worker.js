@@ -26,6 +26,8 @@ const VIDERESEND = new Set([
   'teleportAfvist', 'smittet', 'rask', 'covidSky',
   // Havde lyttere i main.js, men nåede aldrig frem.
   'fuldtraeffer', 'telefonRinger', 'telefonOpkald', 'pillerDukketOp', 'printerSprang',
+  // Rundens hændelser (sim/haendelser.js): et skud afvist af internetnedbruddet.
+  'skudAfvist',
 ]);
 
 let verden = null;

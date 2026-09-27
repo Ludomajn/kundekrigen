@@ -48,7 +48,7 @@ export function lavMenu(rod, api) {
     if (navn === 'lobby') {
       if (a[0]) lobbyNu = a[0];
       // Samme skærm: opdatér på stedet, så trin, markør og fokus bliver.
-      // a[1] er { trin } (Spil igen: 'klar'), som også gælder her.
+      // a[1] er { trin } (Spil igen: 'regler', hvor Start står), som også gælder her.
       if (skaerm === 'lobby' && kv) { kv.opdater(lobbyNu, a[1]); return; }
     }
     slipTekstfelt();
@@ -305,7 +305,7 @@ export function lavMenu(rod, api) {
 
   // ---------------------------------------------------------------- lobby
 
-  /** o.trin: trinnet, skærmen åbner på (Spil igen: 'klar'). */
+  /** o.trin: trinnet, skærmen åbner på (Spil igen: 'regler'; 'klar' er det samme). */
   function visLobby(tilstand = lobbyNu, o = {}) {
     if (!tilstand) return;
     lobbyNu = tilstand;
@@ -385,8 +385,9 @@ export function lavMenu(rod, api) {
     },
     /**
      * Vis en skærm. Lobbyen: menu.vis('lobby', tilstand) opdaterer karakter-
-     * valget på stedet; menu.vis('lobby', tilstand, { trin: 'klar' }) åbner
-     * det (eller går, hvis det er fremme) direkte på Klar-trinnet (Spil igen).
+     * valget på stedet; menu.vis('lobby', tilstand, { trin: 'regler' }) åbner
+     * det (eller går, hvis det er fremme) direkte på Regler, hvor Start står
+     * (Spil igen), dog højst til gruppens trin. 'klar' er det samme.
      */
     vis(navn, ...a) {
       // Lobbyen opdateres ofte (de andres valg). Står spilleren i

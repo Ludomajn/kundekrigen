@@ -52,6 +52,10 @@ export function tagSnapshot(v) {
     tur: { ...v.tur },
     sidsteBaeverPrHold: { ...v.sidsteBaeverPrHold },
     vaabenPrHold: { ...v.vaabenPrHold },
+    // Rundens hændelse (internetnedbrud, myldretid …) og den forrige, så
+    // gæster og sene tilkomne ved, hvad der gælder (tur.runde er i tur).
+    haendelseNu: v.haendelseNu ? { ...v.haendelseNu } : null,
+    sidsteHaendelse: v.sidsteHaendelse ?? null,
     valgtVaaben: v.valgtVaaben,
     valgtLunte: v.valgtLunte,
     // PRNG-tilstanden SKAL med — uden den divergerer replay efter første

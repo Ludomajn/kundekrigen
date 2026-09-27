@@ -152,6 +152,8 @@ export function lavFilmIntro(rod) {
     }
     if (s.type === 'kunde') {
       const k = { ...kundeInfo(s.figur, s.navn), figur: s.figur };
+      // Dialogen høres kun én gang i kampen: karakterens andet slag er uden klip.
+      if (s.klip === false) k.video = null;
       const skilt = k.skiltMs !== null ? `--skilt-ms:${k.skiltMs}ms;` : '';
       // Med klip: videoen i stedet for portrættet (elementet sættes ind efter innerHTML).
       const billede = k.video

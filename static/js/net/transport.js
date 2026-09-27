@@ -212,11 +212,13 @@ export function lavLokaltRum(profil, opsaet = {}, navnePulje = []) {
           // lobby-udsendelse, ellers sender klienten sit udseende i ring.
           break;
         case 'vaelg': {
+          // Uden hold, og højst to ved tastaturet: det ledige hold (som _vaelg i rum.py).
           const figur = d.figur ?? null;
           if (!mig) break;
           if (!gyldigtValg(figur)) { fejl('laast_karakter'); break; }
           mig.valg = figur;
           mig.klar = false;
+          if (figur !== null && mig.hold === null && !mig.tilskuer) mig.hold = ledigtHold();
           sendLobby();
           break;
         }
@@ -302,6 +304,21 @@ export function lavLokaltRum(profil, opsaet = {}, navnePulje = []) {
     rum.udsend(rum.lobby());
   }
 
+  /** De aktive spillere (aktive i rum.py): tilsluttede og ikke tilskuere — lokalt alle ved tastaturet. */
+  const aktive = () => rum.deltagere.filter((x) => x.forbundet && !x.tilskuer);
+
+  /**
+   * Det ledige hold til en spiller uden hold, eller null (_ledigt_hold i
+   * rum.py): med højst to aktive spillere holdet med færrest spillere, blåt
+   * ved lige, talt som holdFejl tæller dem (alle på holdet, der ikke er
+   * tilskuere). Med flere vælger hver selv sit hold.
+   */
+  function ledigtHold() {
+    if (aktive().length > 2) return null;
+    const antal = HOLD_FARVER.map((_, id) => rum.deltagere.filter((x) => !x.tilskuer && x.hold === id).length);
+    return antal.indexOf(Math.min(...antal));
+  }
+
   /** Holdreglerne fra _hold_fejl i rum.py: begge hold skal have en spiller. */
   function holdFejl() {
     const tomt = HOLD_FARVER.some((_, id) => !rum.deltagere.some((x) => !x.tilskuer && x.hold === id));
@@ -311,7 +328,7 @@ export function lavLokaltRum(profil, opsaet = {}, navnePulje = []) {
   /** Betingelsen for nedtællingen (_klar_til_start i rum.py): nøglen for de deltagende, eller null. */
   function klarTilStart() {
     if (rum.fase !== 'venter' || holdFejl()) return null;
-    const spillere = rum.deltagere.filter((x) => x.forbundet && !x.tilskuer);
+    const spillere = aktive();
     if (!spillere.length || !spillere.every((x) => x.klar && x.hold !== null)) return null;
     return spillere.map((x) => x.pid).sort().join(' ');
   }
@@ -349,8 +366,7 @@ export function lavLokaltRum(profil, opsaet = {}, navnePulje = []) {
 
   /** Hver stemme er ét lod; uden stemmer gælder reglernes banetype. */
   function traekBane() {
-    const lodder = rum.deltagere.filter((x) => x.forbundet && !x.tilskuer && x.stemme != null)
-      .map((x) => x.stemme);
+    const lodder = aktive().filter((x) => x.stemme != null).map((x) => x.stemme);
     const bane = lodder.length ? lod(lodder) : (rum.indst.banetype || 'fort');
     return bane === 'tilfaeldig' ? lod(BANE_TYPER) : bane;
   }

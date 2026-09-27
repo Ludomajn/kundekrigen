@@ -105,9 +105,20 @@ def lydfiler():
 
 
 def main():
+    # To kilder kan give samme navn ("Skud .aifc" og "Skud.aifc" -> stemme_skud):
+    # den nyeste optagelse vinder, den gamle springes over.
+    valgt = {}
     for sti, mappe in lydfiler():
+        n = navn(sti, mappe)
+        if n in valgt and os.path.getmtime(valgt[n][0]) >= os.path.getmtime(sti):
+            print(f'  (springer over, nyere findes) {sti}')
+            continue
+        if n in valgt:
+            print(f'  (springer over, nyere findes) {valgt[n][0]}')
+        valgt[n] = (sti, mappe)
+    for n, (sti, mappe) in sorted(valgt.items()):
         f = os.path.join(mappe, os.path.basename(sti)) if mappe else os.path.basename(sti)
-        ud = os.path.join(UD, navn(sti, mappe) + '.ogg')
+        ud = os.path.join(UD, n + '.ogg')
         if not ALLE and os.path.exists(ud) and os.path.getmtime(ud) >= os.path.getmtime(sti):
             continue
         x = laes(sti)

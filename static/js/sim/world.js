@@ -24,6 +24,7 @@ import * as TU from './turn.js';
 import { VAABEN, startAmmo, tilfaeldigtKassevaaben, kasseAntal, FAVORITTER } from './weapons.js';
 import { valider, K } from './commands.js';
 import { OPKALD, TELEFON_MAKS } from './opkald.js';
+import * as HN from './haendelser.js';
 import { filmTicks, filmFlertal } from '../core/filmintro.js';
 
 /* Ro mellem handlingerne (tick): efter en tur uden skade, og efter en tur,
@@ -49,6 +50,10 @@ const STANDARD_CFG = {
   banetype: 'fort',
   ammoSkema: 'standard',
   kasseChance: 0.45,
+  // Tilfældige hændelser i starten af hver runde fra runde 3 (sim/haendelser.js).
+  // haendelser: null = alle; ellers en liste over dem, der må ske.
+  haendelseChance: HN.HAENDELSE_CHANCE,
+  haendelser: null,
 };
 
 export function lavVerden(opsaet) {
@@ -112,6 +117,10 @@ class Verden {
     this.panelAabent = false;          // våbenskuffen er åben (sat med 'panel')
     this.koe = [];                     // kommandoer der venter på næste tick
     this.slut = null;
+    // Rundens hændelse ({ slags, runde }), til næste runde begynder, og den
+    // forrige hændelse — den samme kommer aldrig to gange i træk.
+    this.haendelseNu = null;
+    this.sidsteHaendelse = null;
 
     if (opsaet.hold) this._saetOpHold(opsaet.hold);
     this.valgtVaaben = this._reserveVaaben(0);
@@ -376,6 +385,9 @@ class Verden {
     return this.tur.tilstand === T.SPILLER_AKTIV;
   }
 
+  /** Internetnedbrud i denne runde: intet våben kan affyres (kun meta). */
+  internetNede() { return this.haendelseNu?.slags === 'internet'; }
+
   vaabenNu() { return VAABEN[this.valgtVaaben]; }
 
   ammoFor(holdId, vaabenId) {
@@ -417,7 +429,14 @@ class Verden {
       return { ok: true };
     }
     const res = valider(this, cmd, pid);
-    if (!res.ok) return res;
+    if (!res.ok) {
+      // Skuddet afvist af internetnedbruddet: brugerfladen skal kunne sige
+      // hvorfor, så afvisningen meldes som hændelse i næste tick.
+      if (res.fejl === 'internet' && !this.koe.some((c) => c.k === 'afvist')) {
+        this.koe.push({ k: 'afvist', grund: 'internet' });
+      }
+      return res;
+    }
     this.koe.push(cmd);
     return { ok: true };
   }
@@ -426,6 +445,10 @@ class Verden {
     for (const cmd of this.koe) {
       if (cmd.k === 'hold') { this.holdt = cmd.b; continue; }
       if (cmd.k === 'film') { this._springFilm(cmd.pid); continue; }
+      if (cmd.k === 'afvist') {
+        h.push({ navn: 'skudAfvist', grund: cmd.grund, baever: this.tur.baeverId });
+        continue;
+      }
       this._handling(cmd, h);
     }
     this.koe.length = 0;
@@ -479,6 +502,12 @@ class Verden {
     if (this.tur.tilstand !== T.SPILLER_AKTIV) return;
     const w = this.vaabenNu();
     if (!w) return;
+    // Internetnedbrud: valider har allerede afvist skuddet — men et våbenvalg
+    // i samme tick kan have skiftet et meta-valg ud med et rigtigt våben.
+    if (this.internetNede() && w.kategori !== 'meta') {
+      h.push({ navn: 'skudAfvist', grund: 'internet', baever: b.id });
+      return;
+    }
     const hold = this.hold[b.hold];
     const ammo = this.ammoFor(b.hold, w.id);
     const forudbetalt = this._forudbetalt(w);
@@ -856,11 +885,13 @@ class Verden {
   }
 
   _turStart(h) {
+    // Begynder turen en ny runde, kommer rundens hændelse FØR turen.
+    this._maaskeNyRunde(h);
     const naeste = TU.naesteBaever(this);
     if (!naeste) { this._sejr(h); return; }
     this.tur.holdIdx = naeste.holdIdx;
     this.tur.baeverId = naeste.baever.id;
-    this.tur.tickTilbage = this.cfg.turTicks;
+    this.tur.tickTilbage = this._turTicks();
     this.tur.pausetTick = 0;
     this.tur.retreatTil = null;
     this.tur.tilstand = T.TUR_START;
@@ -931,7 +962,6 @@ class Verden {
     }
 
     this._maaskeKasse(h);
-    this._maaskeHaendelse(h);
 
     const s = TU.tjekSejr(this);
     if (s.slut) { this._sejr(h, s.vinder); return; }
@@ -979,16 +1009,30 @@ class Verden {
       h.push({ navn: 'pillerDukketOp', id: k.id, x: k.x, y: k.y });
       return;
     }
-    const vaabenkasser = this.kasser.filter((k) => k.slags === 'vaaben' && !k.doed).length;
-    if (vaabenkasser >= VAABENKASSE_MAKS) return;
-    // Over land (en startplads), et stykke over jorden; den daler i
-    // faldskærm (physics.skridtKasse) og driver lidt med vinden. På
-    // fortbanen er udstyrspladsen måske inde i borgen, så kassen slippes
-    // over en af borgenes toppe (taget eller et tårn), man kan komme op på.
+    if (this._ledigeKassepladser() <= 0) return;
+    this._slipVaabenkasse(p, h);
+  }
+
+  /** Hvor mange våbenkasser der endnu er plads til på banen. */
+  _ledigeKassepladser() {
+    return VAABENKASSE_MAKS - this.kasser.filter((k) => k.slags === 'vaaben' && !k.doed).length;
+  }
+
+  /** Slip en forsyningskasse med et tilfældigt våben over udstyrspladsen p.
+   *  Over land (en startplads), et stykke over jorden; den daler i
+   *  faldskærm (physics.skridtKasse) og driver lidt med vinden. På
+   *  fortbanen er udstyrspladsen måske inde i borgen, så kassen slippes
+   *  over en af borgenes toppe (taget eller et tårn), man kan komme op på —
+   *  helst ikke over de x'er i undgaa (flere kasser på én gang). */
+  _slipVaabenkasse(p, h, undgaa = null) {
     const indhold = tilfaeldigtKassevaaben(this.rngSim);
     let kx = p.x, ky = p.y;
     if (this.terraen.fort) {
-      const toppe = this.terraen.fort.forter.flatMap((f) => f.kasser);
+      let toppe = this.terraen.fort.forter.flatMap((f) => f.kasser);
+      if (undgaa?.length) {
+        const fri = toppe.filter((x) => undgaa.every((u) => Math.abs(u - x) > 60));
+        if (fri.length) toppe = fri;
+      }
       kx = toppe[Math.floor(this.rngSim() * toppe.length)] ?? p.x;
       ky = Math.max(0, this.terraen.overflade(kx));
     }
@@ -996,6 +1040,7 @@ class Verden {
     const k = E.lavKasse(this.nytId(), { slags: 'vaaben', indhold, x: kx, y });
     this.kasser.push(k);
     h.push({ navn: 'kasseFalder', id: k.id, x: k.x, y: k.y, slags: k.slags });
+    return k;
   }
 
   /** Kunden tager røret: et tilfældigt opkald, og det udløser sin hændelse. */
@@ -1081,42 +1126,28 @@ class Verden {
   }
 
   /**
-   * Tilfældige hændelser mellem ture.
+   * Runder og tilfældige hændelser (sim/haendelser.js).
    *
-   * Formålet er ikke kaos for kaos' skyld: hver hændelse ændrer, hvad der er
-   * det rigtige træk næste tur. Et stenskred laver nyt terræn at gemme sig
-   * bag, et uvejr gør lange skud upålidelige, og en ringende telefon er værd at løbe
-   * efter. Alle trækker fra rngSim, så de er ens hos alle klienter.
+   * En runde er en hel omgang, hvor hver levende klinik har haft én tur. Når
+   * næste tur slår rækkefølgen rundt (TU.nyRunde, uden at flytte noget),
+   * begynder en ny runde: den forrige rundes hændelse slutter, og fra runde 3
+   * er der en fast chance for en ny — altid i starten af runden, lige før
+   * dens første tur, og uafhængigt af, hvor mange runder der er gået.
    */
-  _maaskeHaendelse(h) {
-    // Ikke hver tur — for ofte, og de holder op med at være begivenheder.
-    if (this.tur.turNr < 3 || this.rngSim() > 0.16) return;
+  _maaskeNyRunde(h) {
+    if (!TU.nyRunde(this)) return;
+    this.tur.runde = (this.tur.runde || 0) + 1;
+    this.haendelseNu = null;
+    if (this.tur.runde >= HN.HAENDELSE_FRA_RUNDE) HN.maaskeHaendelse(this, h);
+  }
 
-    const rul = this.rngSim();
-    if (rul < 0.38) {
-      // Stenskred: en håndfuld sten falder fra himlen langs et bælte.
-      const midte = 300 + this.rngSim() * (this.terraen.w - 600);
-      this._stenskred(midte);
-      h.push({ navn: 'hændelse', slags: 'stenskred', tekst: 'Mursten falder fra loftet!', x: midte });
-
-    } else if (rul < 0.72) {
-      // Uvejr: vinden springer kraftigt og vejret skifter.
-      this._uvejr();
-      h.push({ navn: 'hændelse', slags: 'uvejr', tekst: 'Driftsforstyrrelse: uvejr trækker op — pas på vinden',
-               vind: this.vind, vejr: this.vejr });
-
-    } else {
-      // Telefonerne kimer: op til to telefoner dukker op og ringer.
-      const pladser = this._udstyrsPladser();
-      if (!pladser.length) return;
-      let antal = 0;
-      while (this._telefoner() < TELEFON_MAKS) {
-        const k = this._lavTelefon(pladser[Math.floor(this.rngSim() * pladser.length)]);
-        h.push({ navn: 'telefonRinger', id: k.id, x: k.x, y: k.y });
-        antal++;
-      }
-      if (antal) h.push({ navn: 'hændelse', slags: 'telefoner', tekst: 'Telefonerne kimer — tag røret!' });
-    }
+  /** Turens længde: myldretid halverer den, og under et internetnedbrud er
+   *  der kun 12 s (man kan alligevel kun gå og hoppe). */
+  _turTicks() {
+    const slags = this.haendelseNu?.slags;
+    if (slags === 'internet') return Math.min(this.cfg.turTicks, HN.INTERNET_TUR_TICKS);
+    if (slags === 'myldretid') return Math.round(this.cfg.turTicks / 2);
+    return this.cfg.turTicks;
   }
 
   /** Effektiv vind lige nu: rul x vejr x vindstød. Se physics.vindNu. */
@@ -1204,6 +1235,8 @@ class Verden {
     this.tur = { ...snap.tur };
     this.sidsteBaeverPrHold = { ...snap.sidsteBaeverPrHold };
     this.vaabenPrHold = { ...(snap.vaabenPrHold || {}) };
+    this.haendelseNu = snap.haendelseNu ? { ...snap.haendelseNu } : null;
+    this.sidsteHaendelse = snap.sidsteHaendelse ?? null;
     if (snap.valgtVaaben) this.valgtVaaben = snap.valgtVaaben;
     if (snap.valgtLunte) this.valgtLunte = snap.valgtLunte;
     this.rngSim.saet(snap.rng);

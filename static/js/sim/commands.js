@@ -58,6 +58,12 @@ export function valider(v, cmd, pid) {
       if (!v.accepterAffyring()) return { ok: false, fejl: 'kan ikke affyre nu' };
       const kr = cmd.kraft;
       if (typeof kr !== 'number' || !(kr >= 0 && kr <= 1)) return { ok: false, fejl: 'ugyldig kraft' };
+      // Internetnedbrud (sim/haendelser.js): intet våben kan affyres i denne
+      // runde, kun meta-valgene (Sæt på hold, Opsig aftalen). Et tryk, der
+      // stopper et kørende bor, er ikke et skud.
+      if (v.internetNede?.() && !b.redskab && v.vaabenNu()?.kategori !== 'meta') {
+        return { ok: false, fejl: 'internet' };
+      }
     }
     if (cmd.h === 'markoer') {
       if (typeof cmd.x !== 'number' || typeof cmd.y !== 'number') return { ok: false, fejl: 'ugyldig markør' };

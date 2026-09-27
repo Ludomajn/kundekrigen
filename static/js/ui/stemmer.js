@@ -22,7 +22,9 @@
  * ingenting: hellere stille end en fremmed stemme.
  *
  * Hvor ofte: en figur taler ved hver anden handling, eller med det samme,
- * hvis den har været tavs længe; kun døden og sejren altid (replik() i main.js).
+ * hvis den har været tavs længe. Altid: turens replik, når karakterens tur
+ * begynder (varieret mellem dens "Tur"-filer), døden og sejren (replik() i
+ * main.js). Dialogen høres kun én gang i kampen, i filmen.
  */
 'use strict';
 
@@ -63,19 +65,57 @@ export const SPEAKER = {
   vandet_stiger: 'stemme_announcer_vandet_stiger',   // pludselig død: vandet stiger
 };
 
+/*
+ * De generelle, komiske lyde (brugerens egne, Assets/Kundelyde): skud,
+ * granater, infernoet og eksplosionerne. Affyringslydene er sjove, men
+ * barnlige, så de må ikke komme HVER gang (komisk() i main.js: hver anden
+ * gang pr. gruppe, eller med det samme efter lang stilhed — ellers den
+ * neutrale lyd). Eksplosionerne lyder hver gang et skud rammer eller en
+ * bombe går af (brugerens ønske); de varieres bare.
+ */
+export const EFFEKTER = {
+  skud: s('skud', 'skud_2', 'skud_3', 'skud_4'),                          // riflerne: Stregkodescanneren
+  tonerkanon: s('skud', 'skud_2', 'skud_3', 'skud_4', 'kanon_lyd'),       // bazookaen
+  granat: s('granat', 'granat_1', 'granat_2'),                            // Datalæk-bomben kastes
+  inferno: s('inferno', 'inferno_2'),                                     // Integrations inferno
+  eksplosion: s('eksplosion', 'eksplosion_2', 'eksplosion_3'),            // små brag (under 50 wu)
+  eksplosion_stor: s('eksplosion_stor'),                                  // 50-69 wu
+  kaempe_eksplosion: s('kaempe_eksplosion'),                              // 70 wu og op
+};
+
+const sidstEffekt = new Map();
+/** En tilfældig variant af gruppen — aldrig den samme to gange i træk. */
+export function effektLyd(gruppe) {
+  const l = EFFEKTER[gruppe];
+  if (!l?.length) return null;
+  let i = Math.floor(Math.random() * l.length);
+  if (l.length > 1 && l[i] === sidstEffekt.get(gruppe)) i = (i + 1) % l.length;
+  sidstEffekt.set(gruppe, l[i]);
+  return l[i];
+}
+
 /** Alle lydene herfra — de hentes ved siden af lyd.js' egne. */
-export const ALLE_STEMMER = [
+export const ALLE_STEMMER = [...new Set([
   ...Object.values(KARAKTER_LYDE).flatMap((k) => Object.values(k).flat()),
   ...Object.values(SPEAKER),
-];
+  ...Object.values(EFFEKTER).flat(),
+])];
 
 /** Figuren bag en kunde, hvis det er en af karaktererne (ellers null). */
 export const karakterFigur = (b) => (b?.udseende?.fast && KARAKTER_LYDE[b.udseende.figur] ? b.udseende.figur : null);
 
-/** En tilfældig af karakterens lyde til situationen, eller null. */
+const sidstKarakter = new Map();
+/** En tilfældig af karakterens lyde til situationen, eller null — aldrig den
+ *  samme to gange i træk for samme karakter (fx turens replikker). */
 export function karakterLyd(b, situation) {
-  const k = KARAKTER_LYDE[karakterFigur(b)];
+  const figur = karakterFigur(b);
+  const k = KARAKTER_LYDE[figur];
   if (!k) return null;
   const liste = k[situation] || k[FALDBAK[situation]];
-  return liste?.length ? liste[Math.floor(Math.random() * liste.length)] : null;
+  if (!liste?.length) return null;
+  const noegle = `${figur}:${situation}`;
+  let i = Math.floor(Math.random() * liste.length);
+  if (liste.length > 1 && liste[i] === sidstKarakter.get(noegle)) i = (i + 1) % liste.length;
+  sidstKarakter.set(noegle, liste[i]);
+  return liste[i];
 }

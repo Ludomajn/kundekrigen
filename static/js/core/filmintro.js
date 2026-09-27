@@ -81,6 +81,7 @@ export function filmTidslinje(hold, baevere) {
   if (!raekker.some((r) => r.kunder.length)) return [];
 
   const slag = [];
+  const medKlip = new Set();               // figurer, hvis klip (og dialog) allerede er vist
   let t = 0;
   const laeg = (type, ms, data) => { slag.push({ type, fra: t, til: t + ms, ...data }); t += ms; };
   laeg('titel', FILM_MS.titel, {});
@@ -89,10 +90,16 @@ export function filmTidslinje(hold, baevere) {
     const side = r.holdIdx % 2 ? 'hoejre' : 'venstre';
     laeg('klinik', FILM_MS.klinik, { holdIdx: r.holdIdx, farve: r.farve, navn: r.navn, side });
     const set = new Set();
-    r.kunder.filter((k) => !set.has(k.figur) && set.add(k.figur)).forEach((k, nr) => laeg('kunde', kundeMs(k.figur), {
-      // Karakterens eget navn — romertallet ("… II") er til kampen, ikke filmen.
-      holdIdx: r.holdIdx, farve: r.farve, baever: k.baever, figur: k.figur, navn: k.grundnavn, side, nr,
-    }));
+    r.kunder.filter((k) => !set.has(k.figur) && set.add(k.figur)).forEach((k, nr) => {
+      // Klippet (med dialogen) spiller kun første gang, karakteren er med i
+      // filmen: i en spejlkamp får nummer to et kort slag med portrættet.
+      const klip = !medKlip.has(k.figur);
+      medKlip.add(k.figur);
+      laeg('kunde', klip ? kundeMs(k.figur) : FILM_MS.kunde, {
+        // Karakterens eget navn — romertallet ("… II") er til kampen, ikke filmen.
+        holdIdx: r.holdIdx, farve: r.farve, baever: k.baever, figur: k.figur, navn: k.grundnavn, side, nr, klip,
+      });
+    });
   }
   laeg('vs', FILM_MS.vs, { raekker: raekker.filter((r) => r.kunder.length) });
   laeg('slut', FILM_MS.slut, {});

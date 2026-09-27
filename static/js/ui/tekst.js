@@ -42,44 +42,66 @@ export const T = {
     venterPaaVaert: 'Venter på at værten starter kampen…',
   },
 
-  /* Karaktervalget (ui/karaktervalg.js): opsætningen i fire trin. */
+  /* Karaktervalget (ui/karaktervalg.js): opsætningen i tre trin. */
   kv: {
-    trin: ['Karakterer', 'Bane', 'Regler', 'Klar'],
+    trin: ['Karakterer', 'Bane', 'Regler'],
     trinLabel: 'Opsætningens trin',
     naeste: (trin) => `Næste: ${trin}`,
     forlad: 'Forlad',
     lokalt: 'Lokalt spil',
     vaelger: (navn) => `${navn} vælger`,
+    stemmerNu: (navn) => `${navn} stemmer`,
     nySpiller: '+ Tilføj spiller',
     fjernSpiller: (navn) => `Fjern ${navn}`,
-    fraKlar: (navn) => `${navn} er klar — klik for Ikke klar`,
+    givTur: (navn) => `Giv ${navn} turen`,
     tilfaeldig: 'Tilfældig',
     tilfaeldigRolle: 'Trækkes, når kampen starter',
     kommerSnart: 'Kommer snart',
+    utilgaengelig: 'Utilgængelig',
     intetValg: 'Ingen fighter',
     holdValg: 'Vælg hold',
     holdFarve: { blaa: 'Blåt hold', roed: 'Rødt hold', groen: 'Grønt hold', gul: 'Gult hold' },
     udenHold: 'Uden hold',
     ingenSpillere: 'Ingen spillere endnu',
+    vaelgFighter: 'Vælg din fighter',
     vaelgHold: 'Vælg så blåt eller rødt hold (Q/E).',
+    vaelgFighterFoerst: 'Vælg en fighter først.',
     vaelgHoldFoerst: 'Vælg blåt eller rødt hold først.',
     alleValgt: 'Fighter og hold er valgt.',
-    laastKlar: 'Du er klar. Tryk Ikke klar for at ændre.',
+    klarAendr: 'Du har trykket Start. Ændrer du noget, skal du trykke Start igen.',
     baneTitel: 'Stem på en bane',
     baneNote: 'Alle stemmer — banen trækkes blandt stemmerne',
-    ingenStemmer: 'Ingen stemmer endnu',
+    stemPaaBane: 'Stem på en bane',
+    stemFoerst: 'Stem på en bane først.',
     stemmer: (n) => (n === 1 ? '1 stemme' : `${n} stemmer`),
     reglerTitel: 'Kampens regler',
     reglerVaert: 'Du er vært og sætter reglerne.',
     reglerGaest: 'Værten sætter reglerne.',
     reglerSaetter: (navn) => `${navn} sætter reglerne.`,
-    reglerNote: 'Ændres en regel, er ingen længere klar.',
+    reglerNote: 'Ændres en regel, skal alle trykke Start igen.',
     tilfaeldigeRegler: '🎲 Tilfældige regler',
     tilfaeldigeReglerTitel: 'Tilfældig turtid, kamplængde, vejr og vind',
-    klarTitel: 'Klar til kamp?',
-    venterPaa: (n) => `Venter på ${n} spiller${n === 1 ? '' : 'e'} …`,
+    // Start på Regler (det gamle Klar): kampen starter, når alle har trykket.
+    start: 'Start',
+    ikkeKlar: 'Ikke klar',
+    startNote: 'Kampen starter, så snart alle har trykket Start.',
+    trykStart: 'Tryk Start, når du er klar',
+    trykStartLokalt: 'Tryk Start, når I er klar',
+    // Gruppen følges ad: man venter på de andre, og skærmen går selv videre.
+    venterLbl: 'Venter på',
+    venterPaa: (navne) => `Venter på ${opremse(navne)} …`,
+    venterModstander: 'Venter på en modstander …',
+    videreTil: 'Videre til',
+    videre: (trin) => `Videre til ${trin} …`,
+    retValg: (trin) => `Ret dit valg — eller gå videre til ${trin}`,
+    // Står man et trin for langt fremme (rummet gav alligevel intet hold, et sent svar).
+    tilbageTil: (trin) => `Tilbage til ${trin}`,
+    manglerFoer: (mangel, trin) => `${mangel} Gå tilbage til ${trin}.`,
+    // Ét tastatur: den, der lige har valgt, beholder turen et øjeblik.
+    turTil: (navn) => `${navn}${/[sxz]$/i.test(navn) ? "'" : 's'} tur …`,
+    // Kom man ind midt i en kamp, er man med i den næste.
+    kampIGang: 'Kampen er i gang. Du er med i den næste.',
     alleKlar: 'Alle er klar',
-    trykKlar: 'Tryk Klar, når du er færdig',
     toHold: 'Der skal være spillere på begge hold',
     starter: 'Kampen starter …',
     banen: 'Banen',
@@ -89,14 +111,13 @@ export const T = {
     fra: 'Fra',
     taster: {
       karakterer: 'Piletaster: fighter · Enter: vælg · Q/E: blåt/rødt hold · Backspace: ryd',
-      bane: 'Piletaster: bane · Enter: stem (igen: fjern stemmen)',
-      // Regeltrinnet følger markøren: i listen, på 🎲, på Næste — ellers (værten).
+      bane: 'Piletaster: bane · Enter: stem',
+      // Regeltrinnet følger markøren: i listen, på 🎲, på Start — ellers (værten).
       reglerListe: '↑↓: regel · ←→: skift værdi · Enter: næste værdi',
       reglerRul: '↑↓: regel · Enter: tilfældige regler',
-      reglerNaesteVaert: '↑: reglerne · Enter: videre',
-      reglerNaeste: 'Enter: videre',
-      reglerVaert: '↑↓: reglerne',
-      klar: 'Enter: Klar / Ikke klar',
+      reglerVaert: '↑↓: reglerne og Start',
+      start: 'Enter: Start / Ikke klar',
+      startVaert: '↑: reglerne · Enter: Start / Ikke klar',
       tilbage: 'Esc: tilbage',
     },
   },
@@ -198,6 +219,12 @@ export const T = {
     nyKamp: 'Ny sag',
   },
 };
+
+/** En opremsning: "Anna", "Anna og Bo", "Anna, Bo og Carla". */
+export function opremse(dele) {
+  const l = [...dele];
+  return l.length < 2 ? l.join('') : `${l.slice(0, -1).join(', ')} og ${l[l.length - 1]}`;
+}
 
 export const esc = (s) => String(s ?? '').replace(/[&<>"']/g,
   (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));

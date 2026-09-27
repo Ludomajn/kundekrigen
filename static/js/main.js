@@ -43,8 +43,9 @@ import { lavMenu } from './ui/menu.js';
 import { lavHjaelp } from './ui/hjaelp.js';
 import { lavSejrsfest } from './ui/sejrsfest.js';
 import { lavIntro } from './ui/intro.js';
+import { kobHaendelser } from './ui/haendelser.js';
 import { lavFilmIntro, hentFilmData } from './ui/filmintro.js';
-import { karakterLyd, SPEAKER, ALLE_STEMMER } from './ui/stemmer.js';
+import { karakterLyd, SPEAKER, ALLE_STEMMER, effektLyd } from './ui/stemmer.js';
 import { filmTidslinje, filmFlertal } from './core/filmintro.js';
 import { PERSONALE, HOLD_NAVNE } from './core/klinikker.js';
 import { holdFarve } from './render/palette.js';
@@ -190,7 +191,7 @@ const menu = lavMenu(menuRod, {
     S.tilstand = 'lobby';
     const t = S.lobby;
     if (!t) { forladKamp(); return; }
-    menu.vis('lobby', t, { trin: 'klar' });
+    menu.vis('lobby', t, { trin: 'regler' });
     const mine = S.erNet ? t.deltagere.filter((d) => d.pid === S.pid) : t.deltagere.filter((d) => d.lokal);
     for (const d of mine) {
       if (!d.klar && (d.hold === 0 || d.hold === 1)) S.transport?.send({ t: 'klar', d: { klar: true, som: S.erNet ? undefined : d.pid } });
@@ -564,12 +565,14 @@ function koblHaendelser() {
     const k = r.kamera.position;
     const afstand = Math.hypot(e.x - k.x, e.y - k.y);
     visning.kamera.rystelse(Math.min(1, e.radius / 60), afstand);
-    // Én lyd pr. brag: det dybe drøn for de store, nedslaget for de små. Med
-    // forrang, så affyringslyden ikke længere overdøver eksplosionen.
+    // Én lyd pr. brag, med forrang, så affyringslyden ikke overdøver den:
+    // brugerens egne eksplosioner, efter størrelsen, HVER gang et skud rammer
+    // eller en bombe går af — varieret, aldrig samme to gange i træk. (Klynger
+    // inden for 0,15 s giver kun ét brag; se afspil i ui/lyd.js.)
     const rum = rumlig(e.x, e.y, 2400);
-    lyd.afspil(e.radius >= 40 ? 'brag' : 'nedslag', {
-      vol: 0.35 + 0.65 * rum.vol, pan: rum.pan, forrang: true,
-      tone: (e.radius >= 40 ? 0.85 : 0.9) + Math.random() * 0.2,
+    const gruppe = e.radius >= 70 ? 'kaempe_eksplosion' : e.radius >= 50 ? 'eksplosion_stor' : 'eksplosion';
+    lyd.afspil(effektLyd(gruppe), {
+      vol: 0.35 + 0.65 * rum.vol, pan: rum.pan, forrang: true, tone: 0.97 + Math.random() * 0.06,
     });
   });
   bus.paa('skudAffyret', (e) => {
@@ -591,12 +594,12 @@ function koblHaendelser() {
       hud.banner('KVARTALSOPKRÆVNING!', 1800, 'advarsel');
     }
     // Brugerens egne våbenlyde; resten er kontorlyde fra "400 Sounds Pack".
+    // Skud, granater og infernoet er komiske og varieres (komisk()): ikke
+    // hver gang — så bliver det det neutrale sus.
     const variation = { tone: 0.95 + Math.random() * 0.1 };
-    const egen = {
-      grenroer: 'stemme_kanon_lyd', splintboesse: 'stemme_skud',
-      egegranat: 'stemme_granat', koglebombe: 'stemme_granat',
-      halesmaek: Math.random() < 0.5 ? 'stemme_slag' : 'stemme_slag_2',
-    }[e.vaaben];
+    const komiskGruppe = { grenroer: 'tonerkanon', splintboesse: 'skud', egegranat: 'granat', koglebombe: 'inferno' }[e.vaaben];
+    const egen = komiskGruppe ? komisk(komiskGruppe)
+      : e.vaaben === 'halesmaek' ? (Math.random() < 0.5 ? 'stemme_slag' : 'stemme_slag_2') : null;
     const kontor = {
       daemningsdynamit: 'opdatering_skud', baevermine: 'mine_laeg', papirbunke: 'papir_kast',
       covid: 'covid_host',
@@ -655,7 +658,9 @@ function koblHaendelser() {
       }
     }
     // Første tur: speakeren har lige sagt "sæt i gang".
-    if (!(e.turNr === 1 || S.verden.tur.turNr === 1)) replik(b, 'tur');
+    // Karakterens egen "tur"-replik hver gang dens tur begynder (varieret
+    // mellem dens Tur-filer), i kø efter skyttens reaktion, så intet overlapper.
+    if (!(e.turNr === 1 || S.verden.tur.turNr === 1)) replik(b, 'tur', { altid: true, vigtig: true });
     hud.banner(mit ? T.spil.dinTur : `${T.spil.turFor} ${b ? b.navn : ''}`, 2300);
     // Introen skal først komme, når spilleren faktisk har kontrollen — ellers
     // læser man den, mens en anden er i gang, og har glemt den bagefter.
@@ -739,6 +744,7 @@ function koblHaendelser() {
     lyd.stemme('stemme_sekretaer_lyd', { vigtig: true });
   });
   bus.paa('hændelse', (e) => hud.banner(e.tekst, 3200, 'advarsel'));
+  kobHaendelser({ bus, hud, lyd, visning, S, r });   // rundens hændelser: lyd, effekter, mærket (ui/haendelser.js)
 
   // ---- fuldtræffer: skal kunne MÆRKES — banner, ekstra rystelse og et knald.
   bus.paa('fuldtraeffer', (e) => {
@@ -814,6 +820,9 @@ function koblHaendelser() {
     if (e.traf && !opdatering) {
       visning.kamera.rystelse(0.35, 0);
       visning.fx.pop('BIP!', e.x1, e.y1 + 24, { farve: 'roed', str: 34 });
+      // Scanneren eksploderer ikke, men et skud, der rammer, lyder som et.
+      const rum = rumlig(e.x1, e.y1, 2400);
+      lyd.afspil(effektLyd('eksplosion'), { vol: 0.35 + 0.65 * rum.vol, pan: rum.pan, forrang: true });
     }
   });
   bus.paa('opdateringRamt', (e) => {
@@ -985,6 +994,23 @@ function replik(b, situation, { altid = false, vigtig = false } = {}) {
   if (!altid && k.n < 2 && nu - k.sidst < REPLIK_LANG_MS) return;
   const h = lyd.stemme(navn, { vigtig });
   if (h || vigtig) { k.n = 0; k.sidst = nu; }
+}
+
+/**
+ * En af brugerens komiske lyde fra gruppen (ui/stemmer.js EFFEKTER), eller
+ * null: så spiller kalderen den neutrale lyd. Samme regel som replikkerne —
+ * hver anden gang pr. gruppe, eller med det samme efter lang stilhed — så de
+ * barnlige lyde bliver ved med at være sjove.
+ */
+const KOMISK_LANG_MS = 20000;
+function komisk(gruppe) {
+  const nu = performance.now();
+  const k = (S.komisk ||= new Map()).get(gruppe) || { n: 0, sidst: -Infinity };
+  S.komisk.set(gruppe, k);
+  k.n++;
+  if (k.n < 2 && nu - k.sidst < KOMISK_LANG_MS) return null;
+  k.n = 0; k.sidst = nu;
+  return effektLyd(gruppe);
 }
 
 /** Skuddet ramte noget. Er det en kunde på et andet hold end skyttens, ramte
@@ -1324,7 +1350,7 @@ function filmLyd(slag, info) {
   if (slag.type === 'titel' || slag.type === 'vs') lyd.afspil('intro_slam', { vigtig: true });
   else if (slag.type === 'klinik') lyd.afspil('salto', { vol: 1.4 });
   else if (slag.type === 'kunde') {
-    if (info?.video) return;                     // klippet har sin egen lyd (filmKlipLyd)
+    if (info?.video && slag.klip !== false) return;   // klippet har sin egen lyd (filmKlipLyd)
     if (info?.stemme) lyd.stemme(info.stemme, { vigtig: true });
     else lyd.afspil('kast', { vol: 1.3 });
   }
@@ -1456,8 +1482,13 @@ tast.paaTryk((handling, e) => {
   if (handling === 'lad' && akt && erMin(akt) && akt.graver) S.stopBor = true;
   else if (handling === 'lad' && akt && erMin(akt) && !S.oplader && !panel.aaben &&
       v.tur.tilstand === TIL.SPILLER_AKTIV) {
-    S.oplader = true;
-    S.opladFra = performance.now();
+    // Internetnedbrud: ingen opladning til et skud, der alligevel afvises.
+    if (v.haendelseNu?.slags === 'internet' && VAABEN[v.valgtVaaben]?.kategori !== 'meta') {
+      hud.banner('Ingen internet — du kan ikke skyde i denne runde', 1800, 'advarsel');
+    } else {
+      S.oplader = true;
+      S.opladFra = performance.now();
+    }
   }
   sendInput();
 

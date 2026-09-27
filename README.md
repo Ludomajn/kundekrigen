@@ -170,6 +170,40 @@ med et våben, **pilleglasset** giver tålmodighed (liv) tilbage, og
 **svævepillen** giver lav tyngde. Hændelsen "mursten falder fra loftet"
 kaster pakkens mursten.
 
+## Tilfældige hændelser
+
+En **runde** er en hel omgang, hvor hver levende klinik har haft én tur; den
+næste runde begynder, når turrækkefølgen slår rundt (også når klinikker
+imellem er døde). Fra **runde 3** er der i starten af hver runde — lige før
+rundens første tur — **35 % chance** for en hændelse. Chancen er den samme i
+hver runde, så hændelserne kommer tilfældigt og uafhængigt af, hvor langt
+kampen er. Hændelsen trækkes ligeligt blandt dem, der kan ske lige nu, og
+aldrig den samme to gange i træk. Et banner siger, hvad der sker; varer
+hændelsen hele runden, står et mærke under uret, til runden er slut.
+
+| Hændelse | Hvad sker der | Kan kun ske, når |
+|---|---|---|
+| Stenskred | Mursten falder fra loftet langs et bælte | — |
+| Uvejr | Vinden springer kraftigt, og vejret skifter til regn eller slud | — |
+| Telefonerne kimer | Op til to telefoner dukker op og ringer | der er plads til flere telefoner |
+| Internetnedbrud | Ingen kan skyde i hele runden — kun gå, hoppe, Sæt på hold og Opsig aftalen. Turene er 12 s | — |
+| Shitstorm | Op til otte skarpe ticketminer (phishing-minen) lander over hele banen, på land og aldrig oven på en kunde. Er landet småt, rykker de tættere — dog aldrig under 55 wu, så én mine ikke river de andre med | der er land til mindst fire |
+| Kaffepause | Alle kunder får +25 tålmodighed, højst op til 100 | nogen mangler tålmodighed |
+| Printerne går amok | Alle printere på banen sprænger på én gang, med almindelig skade og kratere | der står printere |
+| Pakkelevering | Tre forsyningskasser daler ned på én gang | der er plads under loftet på fire kasser |
+| Influenzasæson | Alle kunder mister 10 tålmodighed, men aldrig under 1 — ingen dør af det. Hjemmearbejde holder smitten ude | nogen har mere end 1 |
+| Brandøvelse | Alle kunder står bagefter et nyt, sikkert sted mindst 80 wu væk (på fortbanen på egen borg: en anden etage, taget eller keepens top), aldrig oven i hinanden eller i en mines udløserfelt. To kunder kan bytte plads | alle kunder kan komme et nyt sted hen |
+| Myldretid | Halv turtid for alle i hele runden | — |
+| Vandskade | Vandet stiger ét trin, som i pludselig død — også før den | vandet ikke står højt i forvejen |
+| Lønningsdag | Hver klinik får +1 af et tilfældigt kassevåben | — |
+
+Alt trækkes fra `rngSim`, så værten, gæsterne og en afspilning ser det samme;
+rundens hændelse (`haendelseNu`) og rundetallet følger med i snapshottet, så
+også en gæst, der kommer til midt i runden, ved, hvad der gælder. Chancen og
+hvilke hændelser der må ske kan sættes i opsætningen (`cfg.haendelseChance`,
+`cfg.haendelser`). Koden: `static/js/sim/haendelser.js` (reglerne og
+følgerne) og `static/js/ui/haendelser.js` (lyd, effekter og mærket).
+
 ## Hvad virker
 
 - **Lokalt spil (hotseat)** — fuldt spilbart. Serveren er ikke involveret efter
@@ -205,8 +239,9 @@ kaster pakkens mursten.
   og forsyningskasser.
   Tønderne har hverken lunte eller nærhedsudløser: de detonerer kun, når de
   fanges af en anden eksplosion, og er derfor ren kædereaktion.
-- **Tilfældige hændelser** mellem ture: stenskred, uvejr der vender vinden, og
-  forsyningsnedkast. De udløses fra `rngSim`, så alle klienter ser det samme.
+- **Tilfældige hændelser** i starten af en runde fra runde 3: tretten i alt,
+  fra stenskred og internetnedbrud til lønningsdag (se afsnittet ovenfor). De
+  udløses fra `rngSim`, så alle klienter ser det samme.
 - **Femten våben** i syv arketyper, datadrevet i `static/js/sim/weapons.js`,
   med begrænset ammo og forsyningskasser, der rent faktisk falder ned.
 - **2–4 klinikker, op til 12 kunder**, fleksibelt ejerskab: en deltager kan styre

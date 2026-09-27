@@ -177,6 +177,10 @@ class Rum:
     def forbundne(self):
         return [d for d in self.deltagere.values() if d.forbundet]
 
+    def aktive(self):
+        """De tilsluttede deltagere, der ikke er tilskuere: dem, nedtællingen venter på."""
+        return [d for d in self.forbundne() if not d.tilskuer]
+
     def spillere(self, hid=None):
         """Deltagerne med et hold (ikke tilskuere) — eller kun holdet hid — i den rækkefølge, de kom ind."""
         return [d for d in self.deltagere.values()
@@ -566,8 +570,29 @@ def _ikke_tilskuer_i_lobbyen(r, dl):
         dl.tilskuer = False
 
 
+def _ledigt_hold(r):
+    """Det ledige hold til en spiller uden hold, eller None. Kaldes under r.laas.
+
+    Kun med højst to aktive spillere (tilsluttede, ikke tilskuere, som
+    nedtællingen tæller dem). Så holdet med færrest spillere, blåt ved lige,
+    talt som _hold_fejl tæller dem (r.spillere): en spiller, der har mistet
+    forbindelsen, står stadig på sit hold i GENTILSLUT sekunder og tæller med,
+    ellers kunne to ende på samme hold, og nedtællingen ville aldrig starte.
+    Med flere aktive vælger hver selv sit hold.
+    """
+    if len(r.aktive()) > 2:
+        return None
+    antal = [len(r.spillere(hid)) for hid in range(ANTAL_HOLD)]
+    return antal.index(min(antal))
+
+
 def _vaelg(conn, ctx, d):
-    """Min fighter. Jeg er ikke længere klar."""
+    """Min fighter. Jeg er ikke længere klar.
+
+    Har jeg intet hold, og er vi højst to aktive spillere, får jeg det ledige
+    hold (_ledigt_hold) under samme lås som valget, så to samtidige valg ender
+    på hvert sit hold. Et hold, jeg har, røres ikke.
+    """
     r = ctx["rum"]
     figur = d.get("figur")
     if not _gyldigt_valg(figur):
@@ -580,6 +605,8 @@ def _vaelg(conn, ctx, d):
         dl.valg = figur
         dl.klar = False
         _ikke_tilskuer_i_lobbyen(r, dl)
+        if figur is not None and dl.hold is None and not dl.tilskuer:
+            dl.hold = _ledigt_hold(r)
     r.send_lobby()
 
 
@@ -743,7 +770,7 @@ def _traek_bane(r):
     nedtællingen. Uden stemmer gælder reglernes banetype. 'tilfaeldig' bliver
     en af de fire baner.
     """
-    lod = [d.stemme for d in r.forbundne() if not d.tilskuer and d.stemme is not None]
+    lod = [d.stemme for d in r.aktive() if d.stemme is not None]
     bane = secrets.choice(lod) if lod else (r.indst.get("banetype") or "fort")
     if bane == "tilfaeldig":
         bane = secrets.choice(BANE_TYPER)
@@ -767,7 +794,7 @@ def _klar_til_start(r):
     v = r.deltagere.get(r.vaert)
     if v is None or not v.forbundet or v.tilskuer:
         return None
-    spillere = [d for d in r.forbundne() if not d.tilskuer]
+    spillere = r.aktive()
     if not spillere or not all(d.klar and d.hold is not None for d in spillere):
         return None
     return frozenset(d.pid for d in spillere)
