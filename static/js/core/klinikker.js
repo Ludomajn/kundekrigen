@@ -1,21 +1,22 @@
-/* Kundekrigen — holdene er klinikker, og de to første har fast personale.
+/* Kundekrigen — holdene er klinikker, og klinikkerne har fast personale.
  *
  * Holdets farve er dets id i protokollen (samme rækkefølge som rum.py's
- * HOLD_FARVER). Personalet sidder på de første pladser i deres klinik med
- * eget navn og egen figur (tegneseriekunde 17-22, indeks 16-21). Resten af
- * pladserne, og klinikkerne uden personale, får de almindelige kunder.
- *
- * Personalets pladser er faste roller: spillerens profil skifter ikke deres
- * udseende eller navn (se navngiv i rum.py og transport.js).
+ * HOLD_FARVER). Personalet (tegneseriekunde 17-22, indeks 16-21) er
+ * karaktererne i karaktervalget (core/roster.js): hver spiller vælger sin
+ * fighter blandt dem og sit hold, blåt eller rødt (docs/karaktervalg.md).
+ * Personale og hold er uafhængige; en ansat kan kæmpe for begge klinikker.
  */
 'use strict';
 
-export const HOLD_ORDEN = ['groen', 'blaa', 'roed', 'gul'];
+// Holdenes rækkefølge = holdindekset i kampen. Karaktervalget har (til en
+// start) kun blåt (0, venstre) og rødt (1, højre); HUD'en og sejrsskærmen slår
+// farven op efter indekset, så de to skal stå først.
+export const HOLD_ORDEN = ['blaa', 'roed', 'groen', 'gul'];
 
 export const HOLD_NAVNE = {
   groen: 'Klinik Højhaven',
   blaa: 'Speciallægeselskabet Mogensen',
-  roed: 'Klinik Rød',
+  roed: 'Klinik Højhaven',       // blåt mod rødt: de to klinikker (karaktervalget har kun de to hold)
   gul: 'Klinik Gul',
 };
 
@@ -28,7 +29,7 @@ export const PERSONALE = {
   blaa: [
     { navn: 'Praktikant Trine', figur: 19 },            // sekretær, passiv-aggressiv
     { navn: 'Systemsygeplejerske 2.0', figur: 20 },     // sygeplejerske, koldt klinisk
-    { navn: 'Dr. Jan fra Mors', figur: 21 },            // speciallæge, nervøs
+    { navn: 'Dr. Jan fra Mors', figur: 21 },            // speciallæge, bitter og vestjysk
   ],
 };
 

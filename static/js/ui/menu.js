@@ -3,18 +3,20 @@
  * Alt er DOM oven på three-lærredet, så spillets CSS arves direkte og
  * tastaturnavigation kommer gratis.
  *
+ * Lobbyen er karaktervalget (ui/karaktervalg.js): en skærm for sig, der
+ * bygges én gang og derefter opdateres på stedet ved hver lobbybesked.
+ *
  * Bemærk `afslut`: JavaScript må ikke lukke en fane, brugeren ikke selv har
  * åbnet. Punktet fører derfor til et afslutningsskærmbillede — ikke til et
  * window.close() der ville fejle lydløst i alle moderne browsere.
  */
 'use strict';
 
-import { T, esc, VEJR_NAVN, BANE_NAVN } from './tekst.js';
+import { T, esc } from './tekst.js';
 import { menuNav } from './keyboard.js';
-import { holdFarve, HOLD_ORDEN, HOLD } from '../render/palette.js';
-import { lavEditor, indlaesProfil, gemProfil } from './customise.js';
-import { BANE_TYPER } from '../sim/terrain_gen.js';
-import { VEJRTYPER } from '../sim/turn.js';
+import { holdFarve } from '../render/palette.js';
+import { indlaesProfil } from './customise.js';
+import { lavKaraktervalg } from './karaktervalg.js';
 
 const LOGO = `
   <div class="logo">
@@ -27,13 +29,35 @@ const LOGO = `
 
 export function lavMenu(rod, api) {
   let nav = null;
-  let editor = null;
   let skaerm = 'start';
   let profil = indlaesProfil();
+  let kv = null;                  // karaktervalget, mens lobbyen er fremme
+  let lobbyNu = null;             // seneste lobbybesked (også mens Indstillinger er åben)
+  let kvGemt = null;              // karaktervalgets trin og markør, mens Indstillinger er åben
+  let indstFraLobby = false;
+  let indstTast = null;           // Indstillingers egne taster (navnefeltet), mens de er fremme
+
+  /** Et tekstfelt, der forsvinder med fokus, får ikke altid blur: slip det
+   *  først, så spillets taster slås til igen (api.tekstfelt(false)). */
+  const slipTekstfelt = () => {
+    const a = document.activeElement;
+    if (a && rod.contains(a) && a.matches?.('input[type=text]')) a.blur();
+  };
 
   const skift = (navn, ...a) => {
+    if (navn === 'lobby') {
+      if (a[0]) lobbyNu = a[0];
+      // Samme skærm: opdatér på stedet, så trin, markør og fokus bliver.
+      // a[1] er { trin } (Spil igen: 'klar'), som også gælder her.
+      if (skaerm === 'lobby' && kv) { kv.opdater(lobbyNu, a[1]); return; }
+    }
+    slipTekstfelt();
+    if (kv) {
+      kvGemt = navn === 'indstillinger' ? kv.gem() : null;
+      kv.fjern(); kv = null;
+    }
     skaerm = navn;
-    nav?.fjern(); nav = null; editor = null;
+    nav?.fjern(); nav = null; indstTast = null;
     ({
       start: visStart, netvaerk: visNetvaerk, deltag: visDeltag,
       indstillinger: visIndstillinger, lobby: visLobby, pause: visPause,
@@ -175,12 +199,18 @@ export function lavMenu(rod, api) {
   // ---------------------------------------------------------------- indstillinger
 
   function visIndstillinger(fraLobby = false) {
+    indstFraLobby = fraLobby;
     ramme(`
       <h2>${T.menu.indstillinger}</h2>
       <div class="opt-kolonner">
         <section class="opt-boks">
-          <h3>Dine sure kunder</h3>
-          <div class="editor" id="edRod"></div>
+          <h3>Dit navn</h3>
+          <label class="felt">
+            <span class="lbl">Det navn, de andre ser i rummet</span>
+            <input type="text" id="optNavn" maxlength="20" autocomplete="off" spellcheck="false"
+                   placeholder="Spiller" value="${esc(profil.spillernavn || '')}">
+          </label>
+          <p class="menufod">Gælder fra næste rum, du opretter eller går ind i. ↑ fra Tilbage skriver i feltet.</p>
         </section>
         <section class="opt-boks">
           <h3>Lyd</h3>
@@ -222,7 +252,6 @@ export function lavMenu(rod, api) {
         <button data-nav class="mpunkt sek" id="mBack">${T.menu.tilbage}</button>
       </nav>`);
 
-    editor = lavEditor(rod.querySelector('#edRod'), profil, 0, (p) => { profil = p; api.profilAendret?.(p); });
     const sigteValg = rod.querySelector('#optSigte');
     sigteValg.onchange = () => {
       profil.indstillinger = { ...(profil.indstillinger || {}), sigteassistent: sigteValg.checked };
@@ -237,134 +266,55 @@ export function lavMenu(rod, api) {
       api.uiAendret?.(v);
       api.profilAendret?.(profil);
     };
-    rod.addEventListener('tekstfelt', (e) => api.tekstfelt(e.detail));
     rod.querySelector('#mBack').onclick = () => skift(fraLobby ? 'lobby' : 'start');
     nav = menuNav(rod.querySelector('#ml'), { tilbage: () => skift(fraLobby ? 'lobby' : 'start') });
+    koblNavnefelt(rod.querySelector('#optNavn'));      // efter menuNav: dens ↑ må ikke tage fokus tilbage
+  }
+
+  /* "Dit navn": profil.spillernavn, som rummet får, når man opretter eller
+   * går ind i et. Mens der skrives, er spillets taster slået fra
+   * (api.tekstfelt), og tasterne går ikke videre til tastaturet — som i
+   * Deltag. ↑ fra Tilbage går ind i feltet; Enter, ↓ og Esc (fortryd) ud igen. */
+  function koblNavnefelt(felt) {
+    let foer = felt.value;
+    const gem = () => {
+      const navn = felt.value.trim().slice(0, 20);
+      if (navn === (profil.spillernavn || '')) return;
+      profil.spillernavn = navn;
+      api.profilAendret?.(profil);
+    };
+    const ud = () => { nav?.marker(); if (document.activeElement === felt) felt.blur(); };
+    felt.onfocus = () => { foer = felt.value; api.tekstfelt?.(true); };
+    felt.onblur = () => { felt.value = felt.value.trim(); gem(); api.tekstfelt?.(false); };
+    felt.oninput = gem;
+    felt.onkeydown = (e) => {
+      e.stopPropagation();
+      if (e.code === 'Enter' || e.code === 'NumpadEnter' || e.code === 'ArrowDown') { e.preventDefault(); ud(); }
+      else if (e.code === 'Escape') { e.preventDefault(); felt.value = foer; gem(); ud(); }
+    };
+    // ↑ på Tilbage (menulisten har kun den ene knap).
+    rod.querySelector('#ml').addEventListener('keydown', (e) => {
+      if (e.code === 'ArrowUp') { e.preventDefault(); felt.focus(); }
+    });
+    indstTast = (e) => {
+      if (e.code !== 'ArrowUp' || document.activeElement === felt) return false;
+      felt.focus();
+      return true;
+    };
   }
 
   // ---------------------------------------------------------------- lobby
 
-  function visLobby(tilstand) {
-    const erVaert = tilstand.vaert === tilstand.dig;
-    const link = tilstand.kode ? `${location.origin}/spil/${tilstand.kode}` : '';
-
-    ramme(`
-      <div class="lobby">
-        <header class="lobby-top">
-          <div>
-            <h2>${T.lobby.titel}</h2>
-            ${tilstand.kode ? `
-              <div class="rumkode">
-                <span class="lbl">${T.lobby.rumkode}</span>
-                <b class="kode">${esc(tilstand.kode)}</b>
-                <button class="btn sm" id="lKopi">${T.lobby.delLink}</button>
-                <span class="kopieret hide" id="lKopieret">${T.lobby.kopieret}</span>
-              </div>
-              <div class="linkvis">${esc(link)}</div>` : '<div class="lbl">Lokalt spil</div>'}
-          </div>
-          <div class="lobby-handling">
-            ${erVaert
-              ? `<div class="lobby-start">
-                   <button class="btn pri stor" id="lStart">${T.menu.start}</button>
-                   <button class="btn stor" id="lRandom" title="Tilfældig bane, banetype, vejr, vind, turtid og kamplængde — klinikker og kunder beholdes">🎲 Random kamp</button>
-                 </div>
-                 <div class="venter" id="lStatus">${(() => {
-                   // Serveren kræver, at alle andre har trykket Klar. Sig det
-                   // HER, i stedet for at startknappen tavst ikke gør noget.
-                   const mangler = tilstand.deltagere.filter((d) =>
-                     d.pid !== tilstand.vaert && !d.tilskuer && d.forbundet !== false && !d.klar).length;
-                   return mangler ? `Venter på, at ${mangler} deltager${mangler > 1 ? 'e' : ''} trykker Klar`
-                                  : 'Alle er klar';
-                 })()}</div>`
-              : `<button class="btn pri stor" id="lKlar">${T.menu.klar}</button>
-                 <div class="venter">${T.lobby.venterPaaVaert}</div>`}
-          </div>
-        </header>
-
-        <div class="lobby-krop">
-          <section class="lobby-hold">
-            ${tilstand.hold.map((h, hi) => {
-              const f = holdFarve(hi);
-              return `<div class="hold-kort" style="--hf:${f.css}">
-                <h3>${esc(f.navn)}</h3>
-                ${h.baevere.map((b) => {
-                  const mit = b.ejer && b.ejer === tilstand.dig;
-                  const ejerNavn = b.ejer
-                    ? (tilstand.deltagere.find((d) => d.pid === b.ejer)?.navn || '—')
-                    : T.lobby.ledigt;
-                  return `<div class="saede ${mit ? 'mit' : ''} ${b.ejer ? '' : 'ledig'}">
-                    <span class="sbaever">${esc(b.navn)}</span>
-                    <span class="sejer">${esc(ejerNavn)}</span>
-                    <button class="btn sm" data-saede="${esc(b.id)}" data-tag="${b.ejer ? '0' : '1'}"
-                      ${b.ejer && !mit && !erVaert ? 'disabled' : ''}>
-                      ${b.ejer ? (mit || erVaert ? T.lobby.slip : '—') : T.lobby.tag}
-                    </button>
-                  </div>`;
-                }).join('')}
-              </div>`;
-            }).join('')}
-          </section>
-
-          <aside class="lobby-side">
-            <div class="lobby-deltagere">
-              <span class="lbl">${T.lobby.deltagere} (${tilstand.deltagere.length})</span>
-              ${tilstand.deltagere.map((d) => `
-                <div class="deltager ${d.forbundet ? '' : 'vaek'}">
-                  <span>${esc(d.navn)}</span>
-                  ${d.pid === tilstand.vaert ? `<i class="badge">${T.lobby.vaert}</i>` : ''}
-                  ${d.tilskuer ? `<i class="badge sek">${T.lobby.tilskuer}</i>` : ''}
-                  ${d.forbundet ? '' : `<i class="badge advarsel">${T.lobby.afbrudt}</i>`}
-                  ${d.klar ? '<i class="prik-klar"></i>' : ''}
-                </div>`).join('')}
-            </div>
-
-            <div class="lobby-indst ${erVaert ? '' : 'laast'}">
-              <span class="lbl">Kampens regler</span>
-              ${raekke('antalHold', T.lobby.antalHold, tilstand.hold.length, [2, 3, 4], erVaert)}
-              ${raekke('baevere_pr_hold', T.lobby.baeverePrHold, tilstand.indst.baevere_pr_hold, [1, 2, 3, 4, 5, 6], erVaert)}
-              ${raekke('turtid', T.lobby.turtid, tilstand.indst.turtid, [15, 20, 30, 45, 60], erVaert, (v) => v + ' s')}
-              ${raekke('kamptid', T.lobby.kamptid, tilstand.indst.kamptid, [600, 1200, 1800, 2700], erVaert, (v) => (v / 60) + ' min')}
-              ${raekke('banetype', T.lobby.banetype, tilstand.indst.banetype || 'fort', BANE_TYPER, erVaert, (v) => BANE_NAVN[v])}
-              ${raekke('vejr', T.lobby.vejr, tilstand.indst.vejr || 'auto', ['auto', ...VEJRTYPER], erVaert, (v) => VEJR_NAVN[v])}
-              ${raekke('vind', T.lobby.vind, tilstand.indst.vind ? 1 : 0, [0, 1], erVaert, (v) => (v ? 'Til' : 'Fra'))}
-            </div>
-
-            <button class="btn" id="lOpt">${T.menu.indstillinger}</button>
-            <button class="btn sek" id="lForlad">${T.menu.tilbage}</button>
-          </aside>
-        </div>
-      </div>`, 'bred');
-
-    rod.querySelectorAll('[data-saede]').forEach((n) => {
-      n.onclick = () => api.saede(n.dataset.saede, n.dataset.tag === '1');
-    });
-    rod.querySelectorAll('[data-indst]').forEach((n) => {
-      n.onclick = () => api.indstilling(n.dataset.indst, n.dataset.v);
-    });
-    const kopi = rod.querySelector('#lKopi');
-    if (kopi) kopi.onclick = async () => {
-      try { await navigator.clipboard.writeText(link); } catch { /* ingen adgang */ }
-      rod.querySelector('#lKopieret').classList.remove('hide');
-    };
-    const start = rod.querySelector('#lStart');
-    if (start) start.onclick = () => api.start();
-    const tilfaeldig = rod.querySelector('#lRandom');
-    if (tilfaeldig) tilfaeldig.onclick = () => api.randomStart();
-    const klar = rod.querySelector('#lKlar');
-    if (klar) klar.onclick = () => api.klar();
-    rod.querySelector('#lOpt').onclick = () => skift('indstillinger', true);
-    rod.querySelector('#lForlad').onclick = () => api.forlad();
-  }
-
-  function raekke(navn, label, vaerdi, valg, kanRedigere, format = (v) => v) {
-    return `<div class="ir">
-      <span>${esc(label)}</span>
-      <div class="ir-valg">
-        ${valg.map((v) => `<button class="ir-knap ${String(v) === String(vaerdi) ? 'paa' : ''}"
-            data-indst="${esc(navn)}" data-v="${esc(v)}" ${kanRedigere ? '' : 'disabled'}
-          >${esc(format(v))}</button>`).join('')}
-      </div>
-    </div>`;
+  /** o.trin: trinnet, skærmen åbner på (Spil igen: 'klar'). */
+  function visLobby(tilstand = lobbyNu, o = {}) {
+    if (!tilstand) return;
+    lobbyNu = tilstand;
+    rod.className = 'menu kv-menu';
+    rod.innerHTML = '';
+    rod.classList.remove('hide');
+    kv = lavKaraktervalg(rod, api, { indstillinger: () => skift('indstillinger', true), gemt: kvGemt, trin: o?.trin });
+    kvGemt = null;
+    kv.opdater(tilstand);
   }
 
   // ---------------------------------------------------------------- pause / sejr
@@ -428,11 +378,33 @@ export function lavMenu(rod, api) {
     get profil() { return profil; },
     saetProfil(p) { profil = p; },
     skift,
-    skjul() { rod.classList.add('hide'); nav?.fjern(); nav = null; skaerm = null; },
-    vis(navn, ...a) { skift(navn, ...a); },
-    fejl: visFejl,
+    skjul() {
+      slipTekstfelt();
+      rod.classList.add('hide'); nav?.fjern(); nav = null; skaerm = null; indstTast = null;
+      kv?.fjern(); kv = null; kvGemt = null;
+    },
+    /**
+     * Vis en skærm. Lobbyen: menu.vis('lobby', tilstand) opdaterer karakter-
+     * valget på stedet; menu.vis('lobby', tilstand, { trin: 'klar' }) åbner
+     * det (eller går, hvis det er fremme) direkte på Klar-trinnet (Spil igen).
+     */
+    vis(navn, ...a) {
+      // Lobbyen opdateres ofte (de andres valg). Står spilleren i
+      // Indstillinger fra lobbyen, gemmes beskeden til han går tilbage —
+      // medmindre nedtællingen er i gang: den skal han se.
+      if (navn === 'lobby' && skaerm === 'indstillinger' && indstFraLobby && a[0]?.nedtaelling_ms == null) {
+        lobbyNu = a[0] || lobbyNu;
+        return;
+      }
+      skift(navn, ...a);
+    },
+    fejl(t) {
+      if (skaerm === 'lobby' && kv) kv.fejl(t);
+      else visFejl(t);
+    },
     tast(e) {
-      if (skaerm === 'indstillinger' && editor) return editor.tast(e);
+      if (skaerm === 'lobby' && kv) return kv.tast(e);
+      if (skaerm === 'indstillinger' && indstTast) return indstTast(e);
       return false;
     },
   };

@@ -158,7 +158,7 @@ klinikker.js`, spejlet i `rum.py`):
 | Klinik | Sekretær | Sygeplejerske | Speciallæge |
 |---|---|---|---|
 | **Klinik Højhaven** (grøn) | Skrankepaven Ingrid — direkte/hård | Bente "Bare Rolig" Hansen — overbeskyttende | Hansen, Dr. Hansen — arrogant |
-| **Speciallægeselskabet Mogensen** (blå) | Praktikant Trine — passiv-aggressiv | Systemsygeplejerske 2.0 — koldt klinisk | Dr. Jan fra Mors — nervøs |
+| **Speciallægeselskabet Mogensen** (blå) | Praktikant Trine — passiv-aggressiv | Systemsygeplejerske 2.0 — koldt klinisk | Dr. Jan fra Mors — bitter og vestjysk |
 
 Personalet sidder på klinikkens første tre pladser med eget navn og egen
 figur og er faste roller: profilens kunder skifter ikke deres udseende
@@ -311,8 +311,17 @@ Tre kilder, alle i `static/lyd/`:
   eller flere varianter; `afspil('fodtrin')` vælger en tilfældig og aldrig den
   samme to gange i træk, og gruppens egen lydstyrke (`GRUPPE_VOL`) sørger for,
   at de sidder godt sammen.
-- **Kundernes stemmer og våbenlyde** (`stemme_*`) er brugerens egne
-  optagelser, klippet af `vaerktoej/kundelyde.py`.
+- **Karakterernes stemmer, speakeren og våbenlydene** (`stemme_*`) er
+  brugerens egne optagelser i `Assets/Kundelyde`, klippet af
+  `vaerktoej/kundelyde.py`.
+  - Hver karakter har sin egen mappe (`Ingrid/`, `Jan/`) og taler selv, når
+    den gør noget: tur, rammer, rammer forbi, griner ad en forbier, av, sur,
+    glad og dør. Hvilken fil der hører til hvilken situation, står i
+    `static/js/ui/stemmer.js`.
+  - `Announcer/` er speakeren ved kampens start ("Er du klar?", "3-2-1 sæt i
+    gang"), ved døden og når vandet stiger.
+  - `Dialog.aifc` er replikken i filmintroens klip, lagt ind af
+    `vaerktoej/klipdialog.py`.
 - **Eksplosionerne og baggrunden** (`brag`, `nedslag`, `ambience`) er fra
   Kenney.nl (CC0).
 
@@ -321,8 +330,10 @@ der noget, springes en ny lyd over — de må aldrig overlappe. Undtagelser:
 `vigtig` (døden, nedtællingen, sejren) venter i en lille kø, og `forrang`
 (eksplosionerne) tager kanalen fra det, der spiller, med en fade på 40 ms —
 ellers overdøvede affyringslyden nedslaget. Lyde i rummet (eksplosioner,
-telefonen, minernes bip, boret) får lydstyrke og stereo efter afstanden til
-kameraet eller den aktive kunde; telefonen justeres løbende, mens den ringer.
+minernes bip, boret) får lydstyrke og stereo efter afstanden til kameraet
+eller den aktive kunde. Telefonen høres kun inden for 10 skridt af ens egen
+kunde og justeres løbende, mens den ringer. Under filmintroen er der ingen
+musik.
 Musik, ambience og løkker ligger uden for kanalen. Præsentationen abonnerer på
 simulationens hændelser; simulationen ved ikke, at lyden findes.
 

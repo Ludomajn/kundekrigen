@@ -15,8 +15,8 @@ røre koden.
 - **Forhåndsvisning:** åbn `http://localhost:8788/?film`. Filmen spiller med
   alle seks ansatte direkte fra forsiden og gentager sig. Esc stopper. Ret
   CSS eller grafik, og genindlæs siden.
-- **I en kamp:** Lokalt spil → Start kampen. Mellemrum, Enter, Esc eller et
-  klik springer over.
+- **I en kamp:** Lokalt spil → Start kampen. Filmen spiller hver gang;
+  mellemrum springer over (over nettet: en afstemning, se nederst).
 
 ## Forløbet
 
@@ -93,8 +93,15 @@ JS bygger denne struktur og skifter kun klasser. Alt andet er CSS.
   </section>
 
   <section class="film-slag film-slut"></section>
-  <div class="film-spring">Mellemrum · Enter · klik: spring over</div>
-  <div class="film-venter">Venter på de andre …</div>
+  <div class="film-spring" data-stemmer="1" data-kraevet="2">   <!-- data-* kun over nettet -->
+    <kbd class="film-spring-tast">Mellemrum</kbd>
+    <span class="film-spring-tekst">stem for at springe over</span>
+    <span class="film-spring-taelling">1/2</span>                  <!-- tom ved ét tastatur -->
+    <ul class="film-spring-hvem">
+      <li class="film-spring-stemme stemt mig">Thomas</li>
+      <li class="film-spring-stemme">Gæst</li>
+    </ul>
+  </div>
 </div>
 ```
 
@@ -102,7 +109,11 @@ JS bygger denne struktur og skifter kun klasser. Alt andet er CSS.
 |---|---|
 | `.film-slag.aktiv` | slaget vises nu. Start animationer her; de genstarter, når klassen kommer på. |
 | `.film-slag.forbi` | slaget er vist |
-| `.film.venter` | spilleren sprang over i et netværksspil og venter på de andre |
+| `.film.stemt` | jeg har stemt for at springe over (netværk); filmen kører videre |
+| `.film[data-stemmer]` | antal stemmer for at springe over lige nu (kun netværk) |
+| `.film-spring[data-kraevet]` | så mange stemmer skal der til (flertal) |
+| `.film-spring-stemme.stemt` / `.mig` | én pr. deltager: har stemt / er mig |
+| `.film.tilskuer` | jeg er ikke med i kampen (tilskuer): afstemningen vises, men jeg kan ikke stemme (tasten er skjult) |
 | `.film.faerdig` | filmen er på vej ud (fades på 0,4 s) |
 | `[data-side]` | `venstre` eller `hoejre` |
 | `[data-klinik]` | `groen`, `blaa`, `roed` eller `gul` |
@@ -168,9 +179,15 @@ intet portræt, tegnes kunden fra figurarket som pladsholder.
   klippet, rettes tallet. Står der intet tal, bruges `FILM_MS.kunde`.
 - **Uret:** klippet følger slagets ur. En sen netværksgæst starter på det
   rigtige sted, og efter sidste billede står det frosset til slaget slutter.
-- **Lyden:** klippets lyd går gennem lydmotoren (volumen og lyd fra gælder)
-  og er én lyd i den fælles kanal. Mens det spiller, lyder intet andet, og
-  musikken er trukket ned. Afviser browseren lyd, spiller klippet stumt.
+- **Lyden:** klippets lydspor er brugerens egen replik, ikke Veos.
+  - Kilden er `Assets/Kundelyde/<Navn>/Dialog.aifc`, og
+    `python3 vaerktoej/klipdialog.py` lægger den ind dér, hvor figuren taler.
+  - Tiderne står i værktøjet: Ingrid fra 3,2 s, Jan fra 3,4 s. Passer den ikke
+    helt til munden, ligger den der alligevel (brugerens ønske).
+  - Laves et klip om, køres værktøjet igen.
+  - Lyden går gennem lydmotoren (volumen og lyd fra gælder) og er én lyd i den
+    fælles kanal. Under filmen er der ingen musik.
+  - Afviser browseren lyd, spiller klippet stumt.
 - **Hentning:** klippene hentes 2,5 s efter, at siden er åbnet, så de er
   klar til kampen uden at stå i vejen for spillet og musikken.
 - **Status:** Dr. Jan fra Mors (21) har sit klip (10,0 s).
@@ -188,6 +205,13 @@ Det hele går gennem den fælles lydkanal, så intet overlapper.
 
 - **Uret:** filmen følger simulationens ur (tilstanden `FILM`), så den står
   ens hos alle, og en gæst, der kommer ind sent, starter i det rigtige slag.
-- **Ét tastatur:** springer man over, går kampen videre med det samme.
-- **Netværk:** kampen går først videre, når alle spillere har sprunget over.
-  Indtil da står "Venter på de andre …".
+- **Filmen spiller hver gang.** Mellemrum (eller et klik på
+  `.film-spring`) springer over.
+- **Ét tastatur:** mellemrum springer over med det samme.
+- **Netværk:** mellemrum er en stemme. Filmen kører videre hos alle, også
+  hos den, der har stemt, og `.film-spring` viser, hvem der har stemt.
+  Når et flertal har stemt (mere end halvdelen: 2 af 2, 2 af 3, 3 af 4),
+  springes filmen over hos alle på samme tick. Tilskuere stemmer ikke.
+- **Layout:** over nettet har `.film-spring` to rækker (ca. 52 px høj) og
+  må ikke dække klippets navneskilt. Pladsholderen flytter det nederst til
+  venstre i kunde-slagene.

@@ -12,7 +12,8 @@
  */
 'use strict';
 
-import { HOLD_ORDEN, HOLD_NAVNE, personale } from '../core/klinikker.js';
+import { HOLD_ORDEN, HOLD_NAVNE } from '../core/klinikker.js';
+import { aabneFigurer, rosterNavn, rosterUdseende, BANE_VALG } from '../core/roster.js';
 
 export class Transport {
   constructor() { this._besked = () => {}; this._luk = () => {}; this._aaben = () => {}; }
@@ -43,9 +44,12 @@ export class WsTransport extends Transport {
 
     ws.onopen = () => {
       this.forsoeg = 0;
-      for (const m of this.koe) ws.send(m);
-      this.koe.length = 0;
+      // Først 'hej' (paaAaben), så køen: serveren kender først forbindelsen,
+      // når hej er modtaget, og afviste ellers alt i køen (ikke_i_rum).
+      // Input fra afbrydelsen er forældet — det sendes ikke bagefter.
+      const koe = this.koe.splice(0);
       this._aaben();
+      for (const m of koe) if (!m.startsWith('{"t":"in"')) ws.send(m);
     };
     ws.onmessage = (e) => {
       let m;
@@ -94,101 +98,195 @@ export class LoopbackTransport extends Transport {
   luk() { this.rum.udsend = () => {}; }
 }
 
-/** Et lokalt "rum" med samme form som Pythons, så lobbyen deler kodesti. */
+/* ---------------------------------------------------------- det lokale rum
+ *
+ * Samme semantik som rum.py (docs/karaktervalg.md): én fighter pr. spiller,
+ * blåt og rødt hold, banestemmer, klar og den automatiske nedtælling, bare
+ * uden server. Spillerne ved tastaturet vælger efter tur; en besked kan
+ * bære som: <pid> for den lokale spiller, der handler (ellers spiller 1).
+ */
+
+/** Nedtællingen, når alle er klar (NEDTAELLING_S i rum.py). */
+const NEDTAELLING_MS = 3000;
+/** Karaktervalgets hold: de første i HOLD_ORDEN, 0 blåt (venstre) og 1 rødt (højre) — som ANTAL_HOLD i rum.py. */
+const ANTAL_HOLD = 2;
+const HOLD_FARVER = HOLD_ORDEN.slice(0, ANTAL_HOLD);
+const MAKS_LOKALE = 8;
+const BANE_TYPER = BANE_VALG.filter((b) => b !== 'tilfaeldig');
+const INDST_NOEGLER = ['turtid', 'kamptid', 'vind', 'vejr', 'bane', 'banetype'];
+// Teksterne fra protokol.py for de fejl, det lokale rum kan give.
+const FEJL = {
+  laast_karakter: 'Den karakter kommer snart.',
+  ukendt_hold: 'Det hold findes ikke.',
+  vaelg_hold: 'Vælg blåt eller rødt hold først.',
+  ukendt_bane: 'Den bane findes ikke.',
+  for_faa_hold: 'Begge hold skal have mindst én spiller.',
+};
+const lod = (liste) => liste[Math.floor(Math.random() * liste.length)];
+
+/** Et åbent figurnummer, null (ingen fighter) eller 'tilfaeldig'. */
+const gyldigtValg = (f) => f === null || f === 'tilfaeldig' || (Number.isInteger(f) && aabneFigurer().includes(f));
+/** 0 (blåt), 1 (rødt) eller null. */
+const gyldigtHold = (h) => h === null || (Number.isInteger(h) && h >= 0 && h < ANTAL_HOLD);
+
+/**
+ * De to hold med én plads pr. spiller, afledt af deltagerne — som _hold_liste
+ * i rum.py. Samme karakter flere gange tælles gennem hele kampen i
+ * holdrækkefølge og derefter spillerrækkefølge ("Dr. Jan fra Mors II").
+ * Med afgoer (kampstart) trækkes fightere uden figurvalg blandt de åbne;
+ * spillerens valg bevares, så 'tilfaeldig' trækkes igen ved Spil igen.
+ */
+function holdListe(deltagere, afgoer = false) {
+  const aabne = aabneFigurer();
+  const brugt = new Map();                  // figur -> forekomster indtil nu
+  return HOLD_FARVER.map((farve, id) => ({
+    id, farve, navn: HOLD_NAVNE[farve],
+    baevere: deltagere.filter((x) => !x.tilskuer && x.hold === id).map((x) => {
+      let f = x.valg;
+      if (afgoer && !Number.isInteger(f)) f = lod(aabne);
+      let navn = '', udseende = {};
+      if (Number.isInteger(f)) {
+        const nr = brugt.get(f) || 0;
+        brugt.set(f, nr + 1);
+        udseende = rosterUdseende(f);
+        navn = rosterNavn(f, nr) || '';
+      } else if (f === 'tilfaeldig') {
+        navn = 'Tilfældig';
+      }
+      return { id: `b_${x.pid}`, navn, udseende, ejer: x.pid, valg: x.valg };
+    }),
+  }));
+}
+
+/**
+ * Et lokalt "rum" med samme form som Pythons, så lobbyen deler kodesti.
+ *
+ * Der er to spillere fra start (p_lokal er vært og dig); ny_spiller tilføjer
+ * flere. opsaet og navnePulje bruges ikke længere: holdene er blåt og rødt,
+ * og hver spiller vælger sin fighter i karaktervalget.
+ */
 export function lavLokaltRum(profil, opsaet = {}, navnePulje = []) {
   const pid = 'p_lokal';
-  const hold = [];
-  const farver = HOLD_ORDEN;
-  const antalHold = opsaet.hold || 2;
-  const prHold = opsaet.baevere_pr_hold || 3;
+  const spiller = (p, navn) => ({ pid: p, navn, forbundet: true, klar: false, tilskuer: false, ms: 0,
+                                   hold: null, valg: null, stemme: null, lokal: true });
 
-  const brugteNavne = new Set(profil.baevere.map((b) => b.navn));
-  let reserve = 1;
-  const friskNavn = () => {
-    const ledige = navnePulje.filter((n) => !brugteNavne.has(n));
-    const navn = ledige.length ? ledige[Math.floor(Math.random() * ledige.length)] : `Kunde ${reserve++}`;
-    brugteNavne.add(navn);
-    return navn;
-  };
-
-  // Klinikkernes personale har faste pladser; profilens egne kunder fylder
-  // de øvrige pladser i rækkefølge.
-  let naesteForlaeg = 0;
-  const plads = (farve, i, j) => {
-    const fast = personale(farve, j);
-    if (fast) return { id: `b${i}_${j}`, ...fast, ejer: pid };
-    const forlaeg = profil.baevere[naesteForlaeg++];
-    // Har profilen færre bævere end der er pladser, må resten have deres
-    // eget navn — ellers står den samme bæver på to hold.
-    return {
-      id: `b${i}_${j}`,
-      navn: forlaeg ? forlaeg.navn : friskNavn(),
-      udseende: forlaeg ? forlaeg.udseende : {},
-      ejer: pid,                            // hotseat: én person styrer alle
-    };
-  };
-
-  for (let i = 0; i < antalHold; i++) {
-    hold.push({
-      id: i, farve: farver[i], navn: HOLD_NAVNE[farver[i]],
-      baevere: Array.from({ length: prHold }, (_, j) => plads(farver[i], i, j)),
-    });
-  }
+  let udsend = () => {};
+  let naesteToken = 1;
 
   const rum = {
-    udsend: () => {},
+    // LoopbackTransport sætter modtageren, og dens luk() sætter en tom
+    // funktion. Et skift stopper en ventende nedtælling, så den ikke starter
+    // en kamp i et lukket rum.
+    get udsend() { return udsend; },
+    set udsend(f) { udsend = f; stopNedtaelling(); },
     kode: null,
     fase: 'venter',
     vaert: pid,
     dig: pid,
     indst: { turtid: 45, kamptid: 1800, vind: true, vejr: 'auto',
-             banetype: 'fort', bane: (Math.random() * 2 ** 31) >>> 0,
-             baevere_pr_hold: prHold },
-    deltagere: [{ pid, navn: profil.spillernavn || 'Spiller', forbundet: true,
-                  klar: true, tilskuer: false, ms: 0 }],
-    hold,
+             banetype: 'fort', bane: (Math.random() * 2 ** 31) >>> 0 },
+    deltagere: [spiller(pid, profil.spillernavn || 'Spiller 1'), spiller('p_lokal_2', 'Spiller 2')],
+    nedtaelling: null,                      // null, eller { slut, token, hvem, timer }
+    bane_trukket: null,
 
     lobby() {
+      const n = rum.nedtaelling;
       return { t: 'lobby', d: { kode: null, fase: rum.fase, vaert: pid, dig: pid,
-                                indst: rum.indst, deltagere: rum.deltagere, hold: rum.hold } };
+                                indst: rum.indst, deltagere: rum.deltagere, hold: holdListe(rum.deltagere),
+                                nedtaelling_ms: n ? Math.max(0, Math.round(n.slut - Date.now())) : null,
+                                bane_trukket: rum.bane_trukket } };
     },
 
     haandter(m) {
+      const d = m.d || {};
+      // Den lokale spiller, der handler; uden som er det spiller 1. En ukendt
+      // spiller ignoreres hellere end at handle på en andens vegne.
+      const mig = rum.deltagere.find((x) => x.pid === (m.som ?? d.som ?? pid));
       switch (m.t) {
         case 'hej':
           rum.udsend({ t: 'velkommen', d: { pid, tok: 'lokal', protokol: 1 } });
-          rum.udsend(rum.lobby());
+          sendLobby();
           break;
-        case 'saede': {
-          const b = rum.hold.flatMap((h) => h.baevere).find((x) => x.id === m.d.baever);
-          if (b) b.ejer = m.d.ejer;
-          rum.udsend(rum.lobby());
+        case 'navngiv':
+          // Forældet: pladsens navn og udseende følger karaktervalget. Ingen
+          // lobby-udsendelse, ellers sender klienten sit udseende i ring.
           break;
-        }
-        case 'navngiv': {
-          const b = rum.hold.flatMap((h) => h.baevere).find((x) => x.id === m.d.baever);
-          // Personalet er faste roller; ingen lobby-udsendelse, ellers sender
-          // klienten sit udseende i ring.
-          if (!b || b.udseende?.fast) break;
-          if (m.d.navn) b.navn = m.d.navn;
-          if (m.d.udseende) b.udseende = m.d.udseende;
-          rum.udsend(rum.lobby());
+        case 'vaelg': {
+          const figur = d.figur ?? null;
+          if (!mig) break;
+          if (!gyldigtValg(figur)) { fejl('laast_karakter'); break; }
+          mig.valg = figur;
+          mig.klar = false;
+          sendLobby();
           break;
         }
-        case 'indst':
-          Object.assign(rum.indst, m.d);
-          if (m.d.hold !== undefined) saetHold(+m.d.hold);
-          if (m.d.baevere_pr_hold !== undefined) saetStoerrelse(+m.d.baevere_pr_hold);
-          rum.udsend(rum.lobby());
+        case 'hold': {
+          const hold = d.hold ?? null;
+          if (!mig) break;
+          if (!gyldigtHold(hold)) { fejl('ukendt_hold'); break; }
+          mig.hold = hold;
+          mig.klar = false;
+          sendLobby();
           break;
-        case 'start':
-          rum.fase = 'i_gang';
-          rum.udsend({ t: 'start', d: { indst: rum.indst, hold: rum.hold } });
+        }
+        case 'stem': {
+          const banetype = d.banetype ?? null;
+          if (!mig) break;
+          if (banetype !== null && !BANE_VALG.includes(banetype)) { fejl('ukendt_bane'); break; }
+          mig.stemme = banetype;
+          mig.klar = false;
+          sendLobby();
           break;
+        }
         case 'klar':
-          rum.deltagere[0].klar = !!m.d.klar;
-          rum.udsend(rum.lobby());
+          if (!mig) break;
+          if (d.klar && mig.hold === null) { fejl('vaelg_hold'); break; }
+          mig.klar = !!d.klar;
+          sendLobby();
           break;
+        case 'indst':
+          // hold og baevere_pr_hold findes ikke længere og ignoreres. Ingen
+          // starter på regler, de ikke har set.
+          for (const k of INDST_NOEGLER) if (k in d) rum.indst[k] = d[k];
+          for (const x of rum.deltagere) x.klar = false;
+          sendLobby();
+          break;
+        case 'start': {
+          // Værtens start: med det samme, uden nedtælling (Spil igen). Ved ét
+          // tastatur kræver den kun, at begge hold har en spiller.
+          const f = holdFejl();
+          if (f) { fejl(f); break; }
+          startKampen();
+          break;
+        }
+        case 'slut':
+          // Kampen er slut (main.js melder det, som værten gør over nettet):
+          // tilbage til karaktervalget med de samme valg, men ingen er klar.
+          rum.fase = 'venter';
+          for (const x of rum.deltagere) x.klar = false;
+          stopNedtaelling();
+          sendLobby();
+          break;
+        case 'ny_spiller': {
+          // Det laveste ledige nummer, sat ind på sin plads i rækken: spillerne
+          // vælger i rækkefølge, så "Spiller 4" aldrig vælger før "Spiller 3".
+          if (rum.deltagere.length >= MAKS_LOKALE) break;
+          const nr = (x) => (x.pid === pid ? 1 : +(/^p_lokal_(\d+)$/.exec(x.pid)?.[1] || 99));
+          let n = 2;
+          while (rum.deltagere.some((x) => nr(x) === n)) n++;
+          const i = rum.deltagere.findIndex((x) => nr(x) > n);
+          rum.deltagere.splice(i < 0 ? rum.deltagere.length : i, 0, spiller(`p_lokal_${n}`, `Spiller ${n}`));
+          sendLobby();
+          break;
+        }
+        case 'fjern_spiller': {
+          // Spiller 1 (værten) bliver, og der er altid mindst to.
+          const i = rum.deltagere.findIndex((x) => x.pid === d.pid);
+          if (i < 0 || d.pid === pid || rum.deltagere.length <= 2) break;
+          rum.deltagere.splice(i, 1);
+          sendLobby();
+          break;
+        }
         // Alt spilrelateret (in, st, krater, tur…) er unødvendigt lokalt:
         // værten ER klienten, og motoren læser sin egen tilstand direkte.
         default: break;
@@ -196,29 +294,74 @@ export function lavLokaltRum(profil, opsaet = {}, navnePulje = []) {
     },
   };
 
-  function saetHold(n) {
-    n = Math.max(2, Math.min(4, n));
-    while (rum.hold.length < n) {
-      const i = rum.hold.length;
-      rum.hold.push({ id: i, farve: farver[i], navn: HOLD_NAVNE[farver[i]],
-                      baevere: Array.from({ length: rum.indst.baevere_pr_hold }, (_, j) => (
-                        personale(farver[i], j) ? { id: `b${i}_${j}`, ...personale(farver[i], j), ejer: pid }
-                          : { id: `b${i}_${j}`, navn: friskNavn(), udseende: {}, ejer: pid })) });
-    }
-    while (rum.hold.length > n) rum.hold.pop();
+  const fejl = (kode) => rum.udsend({ t: 'fejl', d: { kode, tekst: FEJL[kode] || 'Der skete en fejl.' } });
+
+  /** Alle ændringer ender her, som send_lobby i rum.py: tjek nedtællingen, send lobbyen. */
+  function sendLobby() {
+    tjekNedtaelling();
+    rum.udsend(rum.lobby());
   }
-  function saetStoerrelse(n) {
-    n = Math.max(1, Math.min(6, n));
-    rum.indst.baevere_pr_hold = n;
-    for (const h of rum.hold) {
-      while (h.baevere.length < n) {
-        const j = h.baevere.length;
-        const fast = personale(h.farve, j);
-        h.baevere.push(fast ? { id: `b${h.id}_${j}`, ...fast, ejer: pid }
-          : { id: `b${h.id}_${j}`, navn: friskNavn(), udseende: {}, ejer: pid });
-      }
-      while (h.baevere.length > n) h.baevere.pop();
+
+  /** Holdreglerne fra _hold_fejl i rum.py: begge hold skal have en spiller. */
+  function holdFejl() {
+    const tomt = HOLD_FARVER.some((_, id) => !rum.deltagere.some((x) => !x.tilskuer && x.hold === id));
+    return tomt ? 'for_faa_hold' : null;
+  }
+
+  /** Betingelsen for nedtællingen (_klar_til_start i rum.py): nøglen for de deltagende, eller null. */
+  function klarTilStart() {
+    if (rum.fase !== 'venter' || holdFejl()) return null;
+    const spillere = rum.deltagere.filter((x) => x.forbundet && !x.tilskuer);
+    if (!spillere.length || !spillere.every((x) => x.klar && x.hold !== null)) return null;
+    return spillere.map((x) => x.pid).sort().join(' ');
+  }
+
+  function tjekNedtaelling() {
+    const hvem = klarTilStart();
+    if (rum.nedtaelling && rum.nedtaelling.hvem !== hvem) stopNedtaelling();
+    if (hvem && !rum.nedtaelling) {
+      rum.bane_trukket = traekBane();
+      const token = naesteToken++;
+      rum.nedtaelling = { slut: Date.now() + NEDTAELLING_MS, token, hvem,
+                          timer: setTimeout(() => nedtaellingFaerdig(token), NEDTAELLING_MS) };
     }
+  }
+
+  function stopNedtaelling() {
+    if (rum.nedtaelling) clearTimeout(rum.nedtaelling.timer);
+    rum.nedtaelling = null;
+    rum.bane_trukket = null;
+  }
+
+  function nedtaellingFaerdig(token) {
+    const n = rum.nedtaelling;
+    if (!n || n.token !== token) return;    // annulleret eller afløst undervejs
+    if (klarTilStart() !== n.hvem) { sendLobby(); return; }
+    startKampen();
+  }
+
+  /** Start kampen — og send lobbyen bagefter, så den sidste lobby, klienten
+   *  har, ikke længere viser en nedtælling (som rum.py). */
+  function startKampen() {
+    rum.udsend({ t: 'start', d: gaaIGang() });
+    rum.udsend(rum.lobby());
+  }
+
+  /** Hver stemme er ét lod; uden stemmer gælder reglernes banetype. */
+  function traekBane() {
+    const lodder = rum.deltagere.filter((x) => x.forbundet && !x.tilskuer && x.stemme != null)
+      .map((x) => x.stemme);
+    const bane = lodder.length ? lod(lodder) : (rum.indst.banetype || 'fort');
+    return bane === 'tilfaeldig' ? lod(BANE_TYPER) : bane;
+  }
+
+  /** Kampen går i gang (_gaa_i_gang i rum.py): banen, de to hold med de endelige fightere, fasen. */
+  function gaaIGang() {
+    if (!rum.indst.bane) rum.indst.bane = (Math.random() * 2 ** 31) >>> 0;
+    rum.indst.banetype = rum.bane_trukket || traekBane();
+    stopNedtaelling();
+    rum.fase = 'i_gang';
+    return { indst: rum.indst, hold: holdListe(rum.deltagere, true) };
   }
 
   return rum;

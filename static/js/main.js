@@ -33,7 +33,7 @@ import { lavVerden, T as TIL } from './sim/world.js';
 import { K } from './sim/commands.js';
 import { VAABEN } from './sim/weapons.js';
 import { mundingsPunkt } from './sim/behaviours.js';
-import { luftmodstand } from './sim/physics.js';
+import { luftmodstand, GANGFART } from './sim/physics.js';
 import * as lyd from './ui/lyd.js';
 
 import { lavTastatur } from './ui/keyboard.js';
@@ -44,12 +44,12 @@ import { lavHjaelp } from './ui/hjaelp.js';
 import { lavSejrsfest } from './ui/sejrsfest.js';
 import { lavIntro } from './ui/intro.js';
 import { lavFilmIntro, hentFilmData } from './ui/filmintro.js';
-import { filmTidslinje } from './core/filmintro.js';
+import { karakterLyd, SPEAKER, ALLE_STEMMER } from './ui/stemmer.js';
+import { filmTidslinje, filmFlertal } from './core/filmintro.js';
 import { PERSONALE, HOLD_NAVNE } from './core/klinikker.js';
 import { holdFarve } from './render/palette.js';
 import { indlaesProfil, gemProfil, gemSession, hentSession, NAVNEPULJE } from './ui/customise.js';
-import { T, mmss, BANE_NAVN, VEJR_NAVN } from './ui/tekst.js';
-import { BANE_TYPER } from './sim/terrain_gen.js';
+import { T, mmss } from './ui/tekst.js';
 import { VEJRTYPER } from './sim/turn.js';
 
 import { lavBus } from './core/bus.js';
@@ -141,42 +141,60 @@ const menu = lavMenu(menuRod, {
   musikAendret(v) { lyd.saetMusikVolumen(v); },
   uiAendret(v) { saetUi(v); },
 
-  saede(baeverId, tag) {
-    S.transport?.send({ t: 'saede', d: { baever: baeverId, ejer: tag ? S.pid : null } });
-  },
+  /*
+   * Karaktervalget (docs/karaktervalg.md). Alt gælder den spiller, der
+   * handler: over nettet mig selv; ved ét tastatur den lokale spiller, hvis
+   * tur det er (som = hans pid — rummet ignorerer det over nettet).
+   */
   indstilling(navn, v) {
     const d = {};
-    if (navn === 'antalHold') d.hold = +v;
-    else if (navn === 'vind') d.vind = v === '1';
-    else if (['turtid', 'kamptid', 'baevere_pr_hold'].includes(navn)) d[navn] = +v;
+    if (navn === 'vind') d.vind = v === '1' || v === true;
+    else if (['turtid', 'kamptid'].includes(navn)) d[navn] = +v;
     else d[navn] = v;
     S.transport?.send({ t: 'indst', d });
   },
-  klar() {
-    const mig = S.lobby?.deltagere.find((x) => x.pid === S.pid);
-    S.transport?.send({ t: 'klar', d: { klar: !mig?.klar } });
+  klar(som) {
+    const mig = S.lobby?.deltagere.find((x) => x.pid === (som || S.pid));
+    S.transport?.send({ t: 'klar', d: { klar: !mig?.klar, som } });
   },
   start() { S.transport?.send({ t: 'start', d: {} }); },
-  /** Random kamp: alt tilfældigt undtagen klinikker og kunder pr. klinik. */
+  /** Min fighter: et figurnummer fra rosteret, 'tilfaeldig' eller null. */
+  vaelg(figur, som) { S.transport?.send({ t: 'vaelg', d: { figur, som } }); },
+  /** Mit hold: 0 (blåt), 1 (rødt) eller null. */
+  hold(h, som) { S.transport?.send({ t: 'hold', d: { hold: h, som } }); },
+  /** Min stemme på banen: en banetype, 'tilfaeldig' eller null. */
+  stem(banetype, som) { S.transport?.send({ t: 'stem', d: { banetype, som } }); },
+  /** Ét tastatur: en spiller mere ved tastaturet — eller én færre. */
+  nySpiller() { S.transport?.send({ t: 'ny_spiller', d: {} }); },
+  fjernSpiller(pid) { S.transport?.send({ t: 'fjern_spiller', d: { pid } }); },
+  /** Tilfældige regler (karaktervalgets regeltrin): turtid, kamplængde, vejr,
+   *  vind og banefrø. Banen stemmes der om, og kampen starter som altid, når
+   *  alle er klar — reglerne gør ingen klar (rummet nulstiller klar). */
   randomStart() {
     const valg = (l) => l[Math.floor(Math.random() * l.length)];
-    const d = {
+    S.transport?.send({ t: 'indst', d: {
       turtid: valg([15, 20, 30, 45, 60]),
       kamptid: valg([600, 1200, 1800, 2700]),
-      banetype: valg(BANE_TYPER),
       vejr: valg(['auto', ...VEJRTYPER]),
       vind: Math.random() < 0.75,
       bane: (Math.random() * 2 ** 31) >>> 0,
-    };
-    S.randomKamp = `🎲 Random kamp: ${BANE_NAVN[d.banetype]} · ${VEJR_NAVN[d.vejr]} · `
-      + `${d.vind ? 'vind' : 'ingen vind'} · ${d.turtid} s pr. tur · ${d.kamptid / 60} min`;
-    S.transport?.send({ t: 'indst', d });
-    S.transport?.send({ t: 'start', d: {} });
+    } });
   },
   fortsaet() { S.pause = false; S.pauseSlut = performance.now(); menu.skjul(); },
+  /** Omkamp: tilbage til karaktervalget med de samme valg, og jeg er klar
+   *  (ved ét tastatur: alle ved tastaturet). Når alle er klar, tæller rummet
+   *  ned som før; vil nogen skifte fighter eller hold, trykker de Ikke klar. */
   spilIgen() {
-    if (S.erVaert || !S.erNet) { S.transport?.send({ t: 'start', d: {} }); menu.skjul(); }
-    else menu.vis('lobby', S.lobby);
+    slutFest();
+    S.sim?.luk(); S.sim = null;            // den gamle kamp er afgjort; værten holder op med at sende den
+    S.tilstand = 'lobby';
+    const t = S.lobby;
+    if (!t) { forladKamp(); return; }
+    menu.vis('lobby', t, { trin: 'klar' });
+    const mine = S.erNet ? t.deltagere.filter((d) => d.pid === S.pid) : t.deltagere.filter((d) => d.lokal);
+    for (const d of mine) {
+      if (!d.klar && (d.hold === 0 || d.hold === 1)) S.transport?.send({ t: 'klar', d: { klar: true, som: S.erNet ? undefined : d.pid } });
+    }
   },
   forlad() { forladKamp(); },
 });
@@ -186,9 +204,12 @@ menu.vis('start');
 // Musikken følger tilstanden: menunummeret i menuen og lobbyen, kampnummeret
 // under kampen, stille under sejren (vindersangen). Browsere tillader først
 // lyd efter første tastetryk eller klik; så starter den af sig selv.
+// Under filmintroen er der ingen musik: klippene har deres egen lyd (og
+// musik), og to numre oven i hinanden er to lyde på én gang.
 setInterval(() => {
-  lyd.musik(S.tilstand === 'menu' || S.tilstand === 'lobby' ? 'musik_menu'
-    : S.tilstand === 'spil' ? 'musik_kamp' : null);
+  lyd.musik(S.film || S.filmForhaand ? null
+    : S.tilstand === 'menu' || S.tilstand === 'lobby' ? 'musik_menu'
+      : S.tilstand === 'spil' ? 'musik_kamp' : null);
 }, 300);
 lyd.musik('musik_menu');              // ønsket med det samme, så første tryk kan starte det
 
@@ -260,11 +281,15 @@ function forbind(kode, profil) {
   S.transport = new WsTransport(`${proto}://${location.host}/ws`);
   bindTransport();
 
-  const gemt = hentSession();
+  // Sessionen læses ved HVER (gen)forbindelse: efter første 'rum' er den gemt,
+  // så en afbrudt forbindelse genkendes som samme spiller og ikke bliver en
+  // ny tilskuer. (Uden sessionStorage: identiteten fra denne side.)
   S.transport.paaAaben(() => {
+    const gemt = hentSession();
     S.transport.send({ t: 'hej', d: {
       navn: profil.spillernavn || 'Spiller',
-      pid: gemt?.pid, tok: gemt?.tok, rum: gemt?.rum || kode,
+      pid: gemt?.pid ?? (S.tok ? S.pid : undefined), tok: gemt?.tok ?? S.tok,
+      rum: gemt?.rum || S.rumkode || kode,
     } });
   });
   S.ventendeKode = kode;
@@ -300,11 +325,21 @@ function paaBesked(m) {
     case 'lobby':
       S.lobby = m.d;
       S.erVaert = m.d.vaert === S.pid;
-      sendMitUdseende(m.d);
-      if (S.tilstand !== 'spil') { S.tilstand = 'lobby'; menu.vis('lobby', m.d); }
+      // Under kampen og på sejrsskærmen gemmes den kun: de andre vælger om til
+      // næste kamp, men man bliver, hvor man er, til man selv trykker Spil igen.
+      if (S.tilstand === 'spil' || S.tilstand === 'sejr') break;
+      // Kommer jeg tilbage midt i en kamp, jeg er med i, følger 'start' lige
+      // efter (rum.py sender den til den, der missede den) — ingen opsætning imellem.
+      if (m.d.fase === 'i_gang' && m.d.hold?.some((h) => h.baevere.some((b) => b.ejer === S.pid))) break;
+      S.tilstand = 'lobby';
+      menu.vis('lobby', m.d);
       break;
 
     case 'start':
+      // Er vi allerede i kampen (en genforbindelse sender 'start' igen til den,
+      // der missede den), fortsætter vi bare — snapshottet er på vej.
+      if (S.tilstand === 'spil' && S.klient) break;
+      if (S.lobby) S.lobby = { ...S.lobby, nedtaelling_ms: null, bane_trukket: null };
       startKamp(m.d);
       break;
 
@@ -343,19 +378,6 @@ function paaBesked(m) {
   }
 }
 
-/** Mine sæder i lobbyen får mine egne kunders udseende fra profilen —
- *  ellers kommer alle ind i kampen uden kundetype. Sendes kun, når et
- *  sæde mangler det, så lobbyen ikke sender i ring. */
-function sendMitUdseende(lobby) {
-  const mine = (lobby.hold || []).flatMap((h) => h.baevere || []).filter((b) => b.ejer === S.pid);
-  const kunder = S.profil?.baevere || [];
-  mine.forEach((b, i) => {
-    const u = kunder.length ? kunder[i % kunder.length].udseende : null;
-    if (!u || b.udseende?.v === u.v && b.udseende?.figur === u.figur) return;
-    S.transport?.send({ t: 'navngiv', d: { baever: b.id, udseende: u } });
-  });
-}
-
 /* ------------------------------------------------------------------ kamp */
 
 let hud = null;
@@ -379,23 +401,20 @@ function startIntro(vi) {
     lyd.afspil('landing', { vol: 0.8, tone: 0.85 + Math.random() * 0.3 });
     for (let k = 0; k < 6; k++) vi.fx.spor(b.x + (Math.random() - 0.5) * 22, b.y + 2);
   }, frit(b)));
+  // Speakeren: "Er du klar?" på titlen, så "3 … 2 … 1 … sæt i gang" i takt
+  // med tallene (ui/intro.js har tallenes tider efter optagelsen).
   intro.start((n) => {
-    if (n === 0) lyd.afspil('intro_slam', { vigtig: true });
-    else lyd.afspil('nedtael', { tone: 1 + (3 - n) * 0.09, vigtig: true });
+    if (n === 0) lyd.stemme(SPEAKER.er_du_klar, { vigtig: true });
+    else if (n === 3) lyd.stemme(SPEAKER.nedtaelling, { vigtig: true });
   });
 }
 
 function slutIntro() {
   if (!S.introStartet || S.introSlut) return;
   S.introSlut = true;
-  if (intro.go()) lyd.afspil('kamp_start', { vol: 1.6, vigtig: true });
+  intro.go();                           // "sæt i gang" siger speakeren (startIntro)
   visning?.kamera.kigPaaBanen(false);
   hudRod.classList.remove('intro-aktiv');
-  if (S.randomKamp) {
-    const tekst = S.randomKamp;
-    S.randomKamp = null;
-    setTimeout(() => hud?.banner(tekst, 3500), 2400);
-  }
 }
 
 /** Stop en igangværende vinderfest — ny kamp eller tilbage til menuen. */
@@ -428,8 +447,8 @@ async function startKamp(opsaet) {
   S.sim?.luk(); S.sim = null;
   slutFilm();
   slutFest();
-  S.laegeKaldt = new Set();
   S.skudUde = null;
+  S.replikker = new Map();                 // hvem der sidst sagde noget (replik)
   S.introStartet = false;
   S.introSlut = false;
   S.tilstand = 'spil';
@@ -588,7 +607,7 @@ function koblHaendelser() {
     else lyd.afspil(kontor || 'kast', { ...variation, vol: kontor?.startsWith('opdatering') ? 2 : 1.2 });
     // Et skud er ude: rammer det ingen, griner kunderne, når turen skifter.
     // Ét pr. tur — scannerens andet skud må ikke glemme, at det første ramte.
-    S.skudUde ||= { ramte: false };
+    S.skudUde ||= { ramte: false, fjende: false, skytte: e.baever };
   });
   bus.paa('doedsfald', (e) => {
     hud.banner(`${e.navnTekst} har lagt på`, 1800);
@@ -599,15 +618,19 @@ function koblHaendelser() {
       visning.baevere.get(e.baever)?.absorber();
       visning.sorteHuller.start(e.x, e.y + 22);
       lyd.afspil('sort_hul', { vol: 1.4, vigtig: true });
-      lyd.stemme('stemme_doed', { vigtig: true });
-      lyd.stemme('stemme_kill', { vigtig: true });
+      replik(b, 'doer', { vigtig: true, altid: true });
+      lyd.stemme(SPEAKER.doed, { vigtig: true });
     }
   });
   bus.paa('drukner', (e) => {
     visning.fx.plask(e.x, e.y); lyd.afspil('plask');
-    lyd.stemme('stemme_faldt_i_vandet', { vigtig: true });
+    replik(S.verden.baevere.find((x) => x.id === e.baever), 'doer', { vigtig: true, altid: true });
+    lyd.stemme(SPEAKER.doed, { vigtig: true });
   });
-  bus.paa('pludseligDoed', () => hud.banner(T.spil.pludseligDoed, 3000, 'advarsel'));
+  bus.paa('pludseligDoed', () => {
+    hud.banner(T.spil.pludseligDoed, 3000, 'advarsel');
+    lyd.stemme(SPEAKER.vandet_stiger, { vigtig: true });
+  });
   bus.paa('turStart', (e) => {
     const b = S.verden.baevere.find((x) => x.id === (e.baever ?? S.verden.tur.baeverId));
     // Kameraet SKAL finde den nye hovedperson, også hvis man stod og
@@ -617,15 +640,22 @@ function koblHaendelser() {
     const mit = b && erMin(b);
     // Kundernes replikker ved turskiftet. Et skud, der ikke ramte nogen,
     // bliver grinet ad først; så kommer turen.
-    if (S.skudUde && !S.skudUde.ramte) lyd.stemme('stemme_ha_ha', { chance: 0.5 });
+    // Sidste skud: skytten praler af en fuldtræffer eller ærgrer sig over en
+    // forbier — eller en modstander griner ad den. Så siger den nye kunde, at
+    // det er dens tur (stemmerne holder selv pause, så de ikke kommer i klump).
+    const skud = S.skudUde;
     S.skudUde = null;
-    if (e.turNr === 1 || S.verden.tur.turNr === 1) {
-      // Efter introens fanfare, ikke oven i den.
-      setTimeout(() => lyd.stemme('stemme_saet_i_gang', { vigtig: true }), 450);
+    if (skud) {
+      const skytte = S.verden.baevere.find((x) => x.id === skud.skytte);
+      if (skud.fjende) replik(skytte, 'ramt_modstander');
+      else if (!skud.ramte) {
+        const modstandere = S.verden.baevere.filter((x) => !x.doed && skytte && x.hold !== skytte.hold && karakterLyd(x, 'modstander_ved_siden_af'));
+        if (modstandere.length && Math.random() < 0.5) replik(modstandere[Math.floor(Math.random() * modstandere.length)], 'modstander_ved_siden_af');
+        else replik(skytte, 'ramt_ved_siden_af');
+      }
     }
-    else if (mit) {
-      lyd.stemme(['stemme_det_er_din_tur', 'stemme_det_er_din_tur_2', 'stemme_det_er_din_tur_3'], { chance: 0.35 });
-    } else lyd.stemme('stemme_provokation', { chance: 0.25 });
+    // Første tur: speakeren har lige sagt "sæt i gang".
+    if (!(e.turNr === 1 || S.verden.tur.turNr === 1)) replik(b, 'tur');
     hud.banner(mit ? T.spil.dinTur : `${T.spil.turFor} ${b ? b.navn : ''}`, 2300);
     // Introen skal først komme, når spilleren faktisk har kontrollen — ellers
     // læser man den, mens en anden er i gang, og har glemt den bagefter.
@@ -674,6 +704,9 @@ function koblHaendelser() {
     });
     // Fanfaren først, så vindersangen — de må ikke lyde oven i hinanden.
     lyd.afspil(mig ? 'du_vandt' : f ? 'tabt' : 'sejr', { vol: mig ? 2 : 1, vigtig: true });
+    // Vinderholdets karakter jubler, før vindersangen.
+    const jubel = vindere.find((b) => karakterLyd(b, 'glad'));
+    if (jubel) replik(jubel, 'glad', { vigtig: true, altid: true });
     if (f) S.sangTimer = setTimeout(() => {
       const sang = Math.random() < 0.5 ? 'stemme_vindersangen' : 'stemme_vindermusik_2';
       if (S.tilstand === 'sejr') lyd.stemme(sang, { vigtig: true });
@@ -713,8 +746,8 @@ function koblHaendelser() {
     // Tallet kommer først, når skuddet er afviklet (se taelSkade).
     hud.banner(`FULDTRÆFFER! ${b ? b.navn : ''}`, 1500, 'advarsel');
     visning.kamera.rystelse(0.6, 0);
-    // Ingen lyd her: braget kommer med eksplosionen lige efter (med forrang).
-    lyd.stemme('stemme_meget_skade', { chance: 0.6 });
+    // Ingen lyd her: braget kommer med eksplosionen lige efter (med forrang),
+    // og den ramte siger sit (skadehændelsen).
   });
 
   // ---- rene lydhændelser. Præsentationen lytter; den skriver aldrig tilbage.
@@ -724,20 +757,15 @@ function koblHaendelser() {
     // Et fald lander tungt; COVID hoster; alt andet er et slag.
     const slags = e.aarsag === 'fald' ? 'tungt_fald' : e.aarsag === 'covid' ? 'covid_host' : 'skade';
     lyd.afspil(slags, { tone: 0.92 + Math.random() * 0.16 });
-    if (S.skudUde) S.skudUde.ramte = true;
-    if (e.skade >= 30) lyd.stemme('stemme_meget_skade', { chance: 0.5 });
-    else lyd.stemme('stemme_av', { chance: 0.3 });
-    // Er kunden hårdt ramt, men i live, kalder den på en læge — én gang.
-    setTimeout(() => {
-      const b = S.verden?.baevere.find((x) => x.id === e.baever);
-      if (!b || b.doed || b.hp > 25 || S.laegeKaldt?.has(b.id)) return;
-      (S.laegeKaldt ||= new Set()).add(b.id);
-      lyd.stemme('stemme_er_det_en_laege_til_stede', { chance: 0.7 });
-    }, 350);
+    skudRamte(e.baever);
+    // Den ramte siger fra: lidt skade "av", meget skade sur. (Dør den, siger
+    // den sit i dødsfaldet i stedet.)
+    const ramt = S.verden.baevere.find((x) => x.id === e.baever);
+    if (ramt && !ramt.doed) replik(ramt, e.skade >= 30 ? 'sur' : 'av');
   });
-  bus.paa('staaOver', () => lyd.stemme('stemme_provokation', { chance: 0.6 }));
   bus.paa('kasseSamlet', (e) => {
     lyd.afspil(e.slags === 'helbred' ? 'piller' : e.slags === 'vaaben' ? 'vaaben_samlet' : 'kasse_samlet');
+    replik(S.verden.baevere.find((x) => x.id === e.baever), 'glad');
     if (e.slags === 'vaaben') {
       const b = S.verden.baevere.find((x) => x.id === e.baever);
       hud.banner(`${b ? b.navn + ': ' : ''}+${e.antal ?? 1} ${VAABEN[e.indhold]?.navn || 'våben'}`, 1800);
@@ -754,8 +782,6 @@ function koblHaendelser() {
   bus.paa('printerSprang', () => hud.banner('Printeren gik i stykker — igen!', 1800, 'advarsel'));
   bus.paa('vaabenValgt', (e) => {
     lyd.afspil('vaabenskift');
-    // "Tonerkanon!" når den tages frem — ikke oven i kanonlyden ved skuddet.
-    if (e.vaaben === 'grenroer') lyd.stemme('stemme_tonerkanon', { chance: 0.5 });
   });
   bus.paa('terraenBygget', (e) => {
     // Papiret dumper ned; rampen og skummet bygges. Én lyd, gennem kanalen.
@@ -783,7 +809,7 @@ function koblHaendelser() {
   // ---- Stregkodescanneren og Tvangsopdateringen: strålen skal SES.
   bus.paa('straale', (e) => {
     const opdatering = e.vaaben === 'daemningsdynamit';
-    if (e.traf && S.skudUde) S.skudUde.ramte = true;
+    if (e.traf) skudRamte();
     visning.fx.straale(e.x0, e.y0, e.x1, e.y1, { traf: e.traf, farve: opdatering ? 'blaa' : 'roed' });
     if (e.traf && !opdatering) {
       visning.kamera.rystelse(0.35, 0);
@@ -791,7 +817,9 @@ function koblHaendelser() {
     }
   });
   bus.paa('opdateringRamt', (e) => {
-    if (S.skudUde) S.skudUde.ramte = true;
+    skudRamte(e.baever);
+    // Tvangsopdateret: den ramte må stå over — og siger, hvad den mener om IT.
+    replik(S.verden.baevere.find((x) => x.id === e.baever), 'it');
     const b = navnPaa(e.baever);
     visning.fx.pop('GENSTART!', e.x, e.y + 70, { farve: 'blaa', str: 32 });
     hud.banner(`${b} skal installere opdateringer — springer næste tur over`, 2600, 'advarsel');
@@ -808,7 +836,7 @@ function koblHaendelser() {
     visning.fx.klask(e.x, e.y, e.retning ?? 1);
     visning.kamera.rystelse(0.45, 0);
     lyd.afspil('klask_ramt', { forrang: true });
-    if (S.skudUde) S.skudUde.ramte = true;
+    skudRamte();
   });
 
   // ---- Hjemmearbejde: kraftfeltet.
@@ -821,7 +849,7 @@ function koblHaendelser() {
     visning.fx.skjoldBlok(e.x, e.y);
     visning.baevere.get(e.baever)?.skjoldRamt();
     visning.fx.pop('ISOLERET!', e.x, e.y + 62, { farve: 'cyan', str: 26 });
-    if (S.skudUde) S.skudUde.ramte = true;
+    skudRamte();
     // Kommer blokeringen med en eksplosion, tager braget kanalen i samme tick;
     // glasklangen kommer derfor lige efter.
     setTimeout(() => lyd.afspil('skjold_blok'), 420);
@@ -835,7 +863,7 @@ function koblHaendelser() {
     lyd.afspil('covid_sky', { vol: 1.2 * (0.5 + 0.5 * rum.vol), pan: rum.pan, forrang: true });
   });
   bus.paa('smittet', (e) => {
-    if (S.skudUde) S.skudUde.ramte = true;
+    skudRamte(e.baever);
     visning.fx.pop('SMITTET!', e.x, e.y + 64, { farve: 'groen', str: 26 });
     hud.banner(e.fra != null ? `${navnPaa(e.fra)} smittede ${navnPaa(e.baever)} med COVID`
       : `${navnPaa(e.baever)} er smittet med COVID`, 2000, 'advarsel');
@@ -871,6 +899,9 @@ function fraSimulation(m) {
   // hver tredje 'st' videresendes (pålidelige beskeder går altid igennem).
   if (m.t === 'st' && (stTaeller++ % 3) !== 0) return;
   if (S.erNet && S.erVaert && m.t !== 'klar') S.transport?.send(m);
+  // Ved ét tastatur skal det lokale rum også vide, at kampen er slut (over
+  // nettet sender værten 'slut' videre ovenfor): tilbage til karaktervalget.
+  else if (!S.erNet && m.t === 'slut') S.transport?.send({ t: 'slut', d: {} });
 }
 
 function kraevFrame() {
@@ -899,7 +930,10 @@ function loop(nu) {
  * Projektilet slås op på id hver frame — spejlets objekter kan udskiftes
  * af et snapshot undervejs. */
 const NEDSLAG_HOLD_MS = 1500;
-const RING_RAEKKEVIDDE = 1100;       // wu: længere væk end det høres telefonen ikke
+const RING_RAEKKEVIDDE = 1100;       // wu: rækkevidden for rumlig() uden andet tal
+const SKRIDT_MS = 300;               // ét fodtrin (se skridtlyden i opdaterVisning)
+const SKRIDT_WU = GANGFART * SKRIDT_MS / 1000;   // ét skridt: 31,5 wu
+const TELEFON_SKRIDT = 10;           // telefonen høres kun inden for 10 skridt af ens egen kunde
 
 /**
  * Lyd i rummet: hvor højt (0-1) og hvor i stereo en lyd ved (x, y) skal lyde.
@@ -913,7 +947,58 @@ function rumlig(x, y, raekkevidde = RING_RAEKKEVIDDE) {
   const halv = Math.max(200, (r.kamera.right - r.kamera.left) / 2);
   return { vol: naer * naer, pan: Math.max(-0.8, Math.min(0.8, (x - k.x) / halv)) };
 }
+/**
+ * Telefonen høres kun, når man selv står tæt på: inden for TELEFON_SKRIDT
+ * skridt af ens egen kunde (ikke kameraet — at kigge derhen er ikke at gå
+ * derhen). Ved ét tastatur er "man" den aktive kunde; over nettet ens egne.
+ * Højere jo tættere; stereo efter kameraet som de andre lyde.
+ */
+function telefonRum(x, y) {
+  const v = S.verden;
+  const akt = v?.aktivBaever();
+  const lyttere = S.erNet ? v.baevere.filter((b) => !b.doed && erMin(b)) : akt && !akt.doed ? [akt] : [];
+  const d = Math.min(Infinity, ...lyttere.map((b) => Math.hypot(x - b.x, y - b.y)));
+  const naer = Math.max(0, 1 - d / (TELEFON_SKRIDT * SKRIDT_WU));
+  const k = r.kamera.position;
+  const halv = Math.max(200, (r.kamera.right - r.kamera.left) / 2);
+  return { vol: naer * naer, pan: Math.max(-0.8, Math.min(0.8, (x - k.x) / halv)) };
+}
 const RAKETTER = new Set(['gren']);           // fakturaerne flagrer, de brøler ikke
+
+/**
+ * Kundens egen replik til situationen (ui/stemmer.js), gennem den fælles
+ * kanal. Har karakteren ingen lyd til den, siges der ingenting.
+ *
+ * Figurerne siger ikke noget ved HVER handling (brugerens ønske): hver kunde
+ * taler ved hver anden — eller med det samme, hvis den har været tavs længe
+ * (REPLIK_LANG_MS). Blev en replik ikke hørt (kanalen var optaget), prøver
+ * kunden igen næste gang. opt.altid (døden, sejren) taler hver gang.
+ */
+const REPLIK_LANG_MS = 20000;
+function replik(b, situation, { altid = false, vigtig = false } = {}) {
+  const navn = b && karakterLyd(b, situation);
+  if (!navn) return;
+  const nu = performance.now();
+  const k = (S.replikker ||= new Map()).get(b.id) || { n: 0, sidst: -Infinity };
+  S.replikker.set(b.id, k);
+  k.n++;
+  if (!altid && k.n < 2 && nu - k.sidst < REPLIK_LANG_MS) return;
+  const h = lyd.stemme(navn, { vigtig });
+  if (h || vigtig) { k.n = 0; k.sidst = nu; }
+}
+
+/** Skuddet ramte noget. Er det en kunde på et andet hold end skyttens, ramte
+ *  det en modstander (så praler skytten, når turen skifter). */
+function skudRamte(baeverId) {
+  const skud = S.skudUde;
+  if (!skud) return;
+  skud.ramte = true;
+  if (baeverId == null) return;
+  const v = S.verden;
+  const ramt = v?.baevere.find((x) => x.id === baeverId);
+  const skytte = v?.baevere.find((x) => x.id === skud.skytte);
+  if (ramt && skytte && ramt.hold !== skytte.hold) skud.fjende = true;
+}
 
 function foelgSkud(v, vi) {
   const nu = performance.now();
@@ -1000,7 +1085,7 @@ function opdaterVisning(dt, tid) {
   const aktLyd = v.aktivBaever();
   const gaar = !!(S.tilstand === 'spil' && !S.pause && aktLyd && !aktLyd.doed && aktLyd.paaJorden && !aktLyd.graver &&
                   (tast.nede('venstre') || tast.nede('hoejre')) && !panel.aaben && !S.markoerTilstand);
-  if (gaar && performance.now() - (S.sidsteSkridt || 0) > 300) {
+  if (gaar && performance.now() - (S.sidsteSkridt || 0) > SKRIDT_MS) {
     S.sidsteSkridt = performance.now();
     lyd.afspil('fodtrin', { tone: 0.94 + Math.random() * 0.12 });
   }
@@ -1047,9 +1132,9 @@ function opdaterVisning(dt, tid) {
   for (const k of v.kasser) {
     if (k.slags !== 'telefon') continue;
     const ringer = telefonRinger(k.id, nuS);
-    // Ringelyden følger afstanden: svag langt væk, højere jo tættere kameraet
-    // eller den aktive kunde kommer — også mens den ringer. Højst hvert 7. s.
-    const rum = rumlig(k.x, k.y);
+    // Ringelyden høres kun inden for 10 skridt af ens egen kunde og bliver
+    // højere jo tættere — også mens den ringer. Højst hvert 7. s.
+    const rum = telefonRum(k.x, k.y);
     if (ringer && !S.ringer?.has(k.id) && S.tilstand === 'spil') {
       if (rum.vol > 0.02 && performance.now() - (S.sidsteRing || 0) > 7000) {
         const h = lyd.afspil('stemme_telefonlyd_til_event', { vol: 0.9 * rum.vol, pan: rum.pan, maksSek: 4 });
@@ -1150,7 +1235,9 @@ function opdaterVisning(dt, tid) {
     if (!minTur || aktNu.doed || ![TIL.SPILLER_AKTIV, TIL.TUR_START].includes(v.tur.tilstand)) panel.luk();
     else panel.opdater(v, aktNu);
   }
-  hud.opdater(v, S.pid, tilstandTekst, S.oplader, lokalKraft(), minTur);
+  // Ved ét tastatur er den aktive kunde altid "min" (DIN TUR, egen markering),
+  // også når det er spiller 2's kunde.
+  hud.opdater(v, S.erNet ? S.pid : (aktNu?.ejer ?? S.pid), tilstandTekst, S.oplader, lokalKraft(), minTur);
 }
 
 /* -------------------------------------------------------------- filmintro */
@@ -1179,8 +1266,28 @@ function opdaterFilm(v, dt) {
   const fraSim = ((v.tur.tilstandTick || 0) / HZ) * 1000;
   const ny = S.film.ms + dt * 1000;
   S.film.ms = fraSim - ny > 200 ? fraSim : Math.max(S.film.ms, Math.min(ny, fraSim + 200));
-  if (!S.film.sprunget) film.opdater(S.film.ms);
+  film.opdater(S.film.ms);
+  film.stemmer(S.erNet ? filmAfstemning(v) : null);
 }
+
+/** Afstemningen om at springe filmen over, som simulationen ser den
+ *  (tur.filmSprunget kommer med deltaen): hvem der er med, og hvem der har stemt. */
+function filmAfstemning(v) {
+  const alle = v._deltagere();
+  const stemte = v.tur.filmSprunget || [];
+  const navn = (pid) => S.lobby?.deltagere?.find((d) => d.pid === pid)?.navn || 'Spiller';
+  return {
+    kraevet: filmFlertal(alle.length),
+    kanStemme: alle.includes(S.pid),
+    // Simulationens tal er sandheden. Min egen stemme vises med det samme,
+    // men kun, til værten har nået at tælle den (STEMME_VENT_MS) — er den
+    // gået tabt undervejs, kan jeg stemme igen.
+    alle: alle.map((pid) => ({ pid, navn: navn(pid), mig: pid === S.pid,
+                               stemt: stemte.includes(pid) || (pid === S.pid && minStemmeUndervejs()) })),
+  };
+}
+const STEMME_VENT_MS = 1500;
+const minStemmeUndervejs = () => !!S.film?.stemtVed && performance.now() - S.film.stemtVed < STEMME_VENT_MS;
 
 function slutFilm() {
   if (!S.film) return;
@@ -1190,13 +1297,26 @@ function slutFilm() {
   if (S.tilstand === 'spil') hjaelp.saetSynlig(true);
 }
 
-/** Spring over. Ved ét tastatur slutter simulationen filmen med det samme;
- *  over nettet først, når alle har trykket — indtil da står "venter". */
+/** Mellemrum under filmen. Ved ét tastatur springes den over med det samme;
+ *  over nettet er det en stemme, og filmen kører videre hos alle, til et
+ *  flertal har stemt (core/filmintro.js filmFlertal). Tilskuere stemmer ikke. */
 function springFilm() {
-  if (!S.film || S.film.sprunget) return;
+  if (!S.film) return;
+  if (S.erNet) {
+    const v = S.verden;
+    if (!v?._deltagere().includes(S.pid)) return;
+    // Allerede talt, eller lige sendt: intet. Ellers (også efter en tabt
+    // stemme) sendes den — simulationen tæller hver spiller én gang.
+    if ((v.tur.filmSprunget || []).includes(S.pid) || minStemmeUndervejs()) return;
+    S.film.stemtVed = performance.now();
+    afsend({ k: 'film' });
+    film.spring(true);
+    return;
+  }
+  if (S.film.sprunget) return;
   S.film.sprunget = true;
   afsend({ k: 'film' });
-  film.spring(S.erNet);
+  film.spring(false);
 }
 
 /** Lyd pr. slag — gennem den fælles kanal, så intet overlapper. */
@@ -1247,9 +1367,14 @@ function stopForhaand() {
   S.filmForhaand = null;
   film.stop();
 }
-filmRod.addEventListener('click', () => (S.film && S.tilstand === 'spil' ? springFilm() : S.filmForhaand && stopForhaand()));
+// Et klik på "Mellemrum · spring over" tæller som mellemrum; forhåndsvisningen stopper ved et klik.
+filmRod.addEventListener('click', (e) => {
+  if (S.film && S.tilstand === 'spil') { if (e.target.closest('.film-spring')) springFilm(); }
+  else if (S.filmForhaand) stopForhaand();
+});
 // intro.json er klar, når kampen starter — og dens replikker hentes med.
 hentFilmData().then((d) => lyd.hentLyde(Object.values(d?.figurer || {}).map((f) => f?.stemme)));
+lyd.hentLyde(ALLE_STEMMER);            // karakterernes egne replikker og speakeren (ui/stemmer.js)
 if (new URLSearchParams(location.search).has('film')) spilFilm();
 
 /* ------------------------------------------------------------------ input */
@@ -1302,9 +1427,14 @@ function afsend(cmd) {
 }
 
 tast.paaTryk((handling, e) => {
-  // Under filmintroen: mellemrum, Enter eller Esc springer over — intet andet.
-  if ((S.film && S.tilstand === 'spil') || S.filmForhaand) {
-    if (['Space', 'Enter', 'NumpadEnter', 'Escape'].includes(e.code)) (S.film ? springFilm() : stopForhaand());
+  // Under filmintroen: mellemrum stemmer for at springe over — intet andet.
+  // (Forhåndsvisningen stopper også på Esc.)
+  if (S.film && S.tilstand === 'spil') {
+    if (e.code === 'Space') springFilm();
+    return;
+  }
+  if (S.filmForhaand) {
+    if (e.code === 'Space' || e.code === 'Escape') stopForhaand();
     return;
   }
   if (panel.tast(e)) return;

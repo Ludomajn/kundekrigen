@@ -94,6 +94,7 @@ export function tagDelta(v) {
          tilstand: v.tur.tilstand, vind: v.vind, vand: v.vandNiveau,
          // Filmintroen: hvor langt den er (tick), så gæsterne viser samme slag.
          ft: v.tur.tilstand === 'film' ? v.tur.tilstandTick : undefined,
+         fs: v.tur.tilstand === 'film' ? (v.tur.filmSprunget || []) : undefined,   // hvem har stemt for at springe over
          retreat: v.tur.retreatTil,
          // Våbenvalget lever hos værten. Uden det her viser klientens HUD
          // det forkerte våben, indtil næste turskift-snapshot.
@@ -156,6 +157,7 @@ export function anvendDelta(v, d) {
   v.tur.tickTilbage = d.h.tid;
   v.tur.tilstand = d.h.tilstand;
   if (d.h.ft !== undefined) v.tur.tilstandTick = d.h.ft;
+  if (d.h.fs !== undefined) v.tur.filmSprunget = d.h.fs;
   v.tur.retreatTil = d.h.retreat;
   v.vind = d.h.vind;
   v.vandNiveau = d.h.vand;

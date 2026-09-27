@@ -59,13 +59,10 @@ const NAVNE = [
   // Eksplosionerne og baggrunden (Kenney.nl).
   'brag', 'nedslag', 'sejr', 'ambience',
   ...Object.entries(GRUPPER).flatMap(([g, n]) => Array.from({ length: n }, (_, i) => `k_${g}_${i + 1}`)),
-  // Kundernes stemmer — brugerens egne optagelser, klippet og normaliseret
-  // af vaerktoej/kundelyde.py.
-  'stemme_av', 'stemme_meget_skade', 'stemme_doed', 'stemme_faldt_i_vandet',
-  'stemme_det_er_din_tur', 'stemme_det_er_din_tur_2', 'stemme_det_er_din_tur_3',
-  'stemme_saet_i_gang', 'stemme_provokation', 'stemme_ha_ha',
-  'stemme_er_det_en_laege_til_stede', 'stemme_tonerkanon', 'stemme_vindersangen',
-  'stemme_vindermusik_2', 'stemme_kill', 'stemme_sekretaer_lyd',
+  // Brugerens egne optagelser (vaerktoej/kundelyde.py): vindersangene og
+  // telefonens sekretær. Karakterernes egne replikker og speakeren står i
+  // ui/stemmer.js og hentes derfra (hentLyde).
+  'stemme_vindersangen', 'stemme_vindermusik_2', 'stemme_sekretaer_lyd',
   // Brugerens egne effektlyde (samme værktøj): våbnene og telefonen.
   'stemme_skud', 'stemme_kanon_lyd', 'stemme_granat', 'stemme_slag', 'stemme_slag_2',
   'stemme_systemnedbrud', 'stemme_fax', 'stemme_telefonlyd_til_event',

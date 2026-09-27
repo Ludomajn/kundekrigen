@@ -1,50 +1,64 @@
 {
-  "_om": "Filmintroens grafik og tekster (ejes af art directoren; se docs/filmintro.md). Tomme felter bruger standarden: portræt = figuren tegnet fra figurarket, rolle og replik fra core/filmintro.js.",
+  "_om": "Filmintroens grafik og tekster (ejes af art directoren; se docs/filmintro.md). Tomme felter bruger standarden: portræt = figuren tegnet fra figurarket, rolle og replik fra core/filmintro.js. Med video er navneskiltet brændt ind i klippet (Tape & Spray: emblem over vandmærket fra første frame, frys + kort de sidste 1,9 s); skilt_ms er da, hvornår replikken vises som undertekst, og den forsvinder ved frysningen. replik \"\" = ingen undertekst.",
   "figurer": {
     "16": {
       "navn": null,
       "rolle": null,
-      "replik": "Har du en tid? Nej? Så har du et problem.",
-      "portraet": null,
-      "stemme": null
+      "replik": "Jeg har genstartet den.",
+      "portraet": "16.webp",
+      "stemme": null,
+      "video": "16.mp4",
+      "skilt_ms": 4100,
+      "valg_video": "16_valg.webm",
+      "valg_video_safari": "16_valg.mov"
     },
     "17": {
       "navn": null,
       "rolle": null,
       "replik": null,
-      "portraet": null,
-      "stemme": null
+      "portraet": "17.webp",
+      "stemme": null,
+      "valg_video": "17_valg.webm",
+      "valg_video_safari": "17_valg.mov"
     },
     "18": {
       "navn": null,
       "rolle": null,
       "replik": null,
-      "portraet": null,
-      "stemme": null
+      "portraet": "18.webp",
+      "stemme": null,
+      "valg_video": "18_valg.webm",
+      "valg_video_safari": "18_valg.mov"
     },
     "19": {
       "navn": null,
       "rolle": null,
       "replik": null,
-      "portraet": null,
-      "stemme": null
+      "portraet": "19.webp",
+      "stemme": null,
+      "valg_video": "19_valg.webm",
+      "valg_video_safari": "19_valg.mov"
     },
     "20": {
       "navn": null,
       "rolle": null,
       "replik": null,
-      "portraet": null,
-      "stemme": null
+      "portraet": "20.webp",
+      "stemme": null,
+      "valg_video": "20_valg.webm",
+      "valg_video_safari": "20_valg.mov"
     },
     "21": {
       "navn": null,
       "rolle": null,
-      "replik": "A er ikk' sur. A er bar' fra Mors.",
-      "portraet": null,
+      "replik": "Her på øen kan vi ikke lide fremmede.",
+      "portraet": "21.webp",
       "stemme": null,
       "video": "21.mp4",
-      "skilt_ms": null
+      "skilt_ms": 4250,
+      "valg_video": "21_valg.webm",
+      "valg_video_safari": "21_valg.mov"
     }
   },
-  "_replikker": "16 er replikken fra Veo-klippet. 21 er et forslag, indtil brugerens egen dialog kommer (se Assets/Cartoon Characters/Kundekrigen klinikker/Veo/VEO-PROMPTS.md)."
+  "_replikker": "Brugerens egen dialog (Assets/Kundelyde/<Navn>/Dialog.aifc) ligger i klippene. 16 er brugerens ordlyd; 21 er skrevet på rigsdansk."
 }

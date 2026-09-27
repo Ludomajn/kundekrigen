@@ -9,13 +9,22 @@ For hver fil:
      top -1,5 dB), og kanterne tones blødt ind og ud.
   4. Gemmes som Ogg Vorbis i static/lyd/stemme_<navn>.ogg.
 
-Kør:  python3 vaerktoej/kundelyde.py [mappe med .aifc]
+Undermapper er karakterernes og speakerens egne lyde (Ingrid/, Jan/,
+Announcer/ …): de får mappens navn foran, fx Ingrid/Tur 2.aifc ->
+stemme_ingrid_tur_2.ogg. Hvilken situation hver fil hører til, står i
+static/js/ui/stemmer.js.
+
+Kun filer, der er nyere end deres .ogg, laves om (--alle laver alle).
+
+Kør:  python3 vaerktoej/kundelyde.py [mappe med .aifc] [--alle]
 """
 import array, math, os, subprocess, sys, tempfile, unicodedata
 
 HER = os.path.dirname(os.path.abspath(__file__))
 ROD = os.path.dirname(HER)
-KILDE = sys.argv[1] if len(sys.argv) > 1 else os.path.join(ROD, '..', 'Assets', 'Kundelyde')
+ARG = [a for a in sys.argv[1:] if not a.startswith('--')]
+ALLE = '--alle' in sys.argv
+KILDE = ARG[0] if ARG else os.path.join(ROD, '..', 'Assets', 'Kundelyde')
 UD = os.path.join(ROD, 'static', 'lyd')
 RATE = 24000
 VIN = RATE // 100                     # 10 ms
@@ -25,11 +34,15 @@ FOR, EFTER = 0.06, 0.14               # luft før og efter, sekunder
 LANG_PAUSE, NY_PAUSE = 0.9, 0.4
 
 
-def navn(fil):
-    n = os.path.splitext(os.path.basename(fil))[0].lower()
-    n = n.replace('æ', 'ae').replace('ø', 'oe').replace('å', 'aa')
+def slug(t):
+    n = t.lower().replace('æ', 'ae').replace('ø', 'oe').replace('å', 'aa')
     n = unicodedata.normalize('NFKD', n).encode('ascii', 'ignore').decode()
-    return 'stemme_' + '_'.join(n.split())
+    return '_'.join(n.split())
+
+
+def navn(fil, mappe=''):
+    n = slug(os.path.splitext(os.path.basename(fil))[0])
+    return 'stemme_' + (slug(mappe) + '_' if mappe else '') + n
 
 
 def laes(fil):
@@ -78,10 +91,26 @@ def klip(x, stykker):
     return ud
 
 
+def lydfiler():
+    """(sti, mappe) for rodens filer og undermappernes (karaktererne og speakeren)."""
+    lyd = lambda f: f.lower().endswith(('.aifc', '.aiff', '.wav'))
+    for f in sorted(os.listdir(KILDE)):
+        sti = os.path.join(KILDE, f)
+        if lyd(f):
+            yield sti, ''
+        elif os.path.isdir(sti) and not f.startswith('.'):
+            for g in sorted(os.listdir(sti)):
+                if lyd(g):
+                    yield os.path.join(sti, g), f
+
+
 def main():
-    filer = sorted(f for f in os.listdir(KILDE) if f.lower().endswith(('.aifc', '.aiff', '.wav')))
-    for f in filer:
-        x = laes(os.path.join(KILDE, f))
+    for sti, mappe in lydfiler():
+        f = os.path.join(mappe, os.path.basename(sti)) if mappe else os.path.basename(sti)
+        ud = os.path.join(UD, navn(sti, mappe) + '.ogg')
+        if not ALLE and os.path.exists(ud) and os.path.getmtime(ud) >= os.path.getmtime(sti):
+            continue
+        x = laes(sti)
         st = aktive_stykker(x)
         if not st:
             print('  (tom)', f); continue
@@ -89,14 +118,13 @@ def main():
         varighed = len(y) / RATE
         with tempfile.NamedTemporaryFile(suffix='.raw', delete=False) as t:
             t.write(y.tobytes()); tmp = t.name
-        ud = os.path.join(UD, navn(f) + '.ogg')
         ind_tone, ud_tone = 0.012, 0.06
         filtre = (f'highpass=f=70,loudnorm=I=-16:TP=-1.5:LRA=11,aresample={RATE},'
                   f'afade=t=in:st=0:d={ind_tone},afade=t=out:st={max(0, varighed - ud_tone):.3f}:d={ud_tone}')
         subprocess.run(['ffmpeg', '-v', 'error', '-y', '-f', 'f32le', '-ar', str(RATE), '-ac', '1', '-i', tmp,
                         '-af', filtre, '-c:a', 'libvorbis', '-q:a', '4', ud], check=True)
         os.unlink(tmp)
-        print(f'{f:32s} {len(x) / RATE:5.2f} s -> {varighed:5.2f} s  {len(st)} stykke(r)  '
+        print(f'{f:44s} {len(x) / RATE:5.2f} s -> {varighed:5.2f} s  {len(st)} stykke(r)  '
               f'{os.path.getsize(ud) // 1024:4d} KB  {os.path.basename(ud)}')
 
 

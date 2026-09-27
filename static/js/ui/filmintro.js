@@ -130,6 +130,7 @@ export function lavFilmIntro(rod) {
   let vedKlip = null;
   let skjulTimer = 0;
   let klipNu = null;                  // { v, s } — klippet i det aktive slag, mens det spiller
+  let stemmeNoegle = '';              // sidst viste afstemning (så den kun tegnes om, når den ændrer sig)
   rod.className = 'film skjult';
   rod.setAttribute('aria-hidden', 'true');
 
@@ -232,8 +233,13 @@ export function lavFilmIntro(rod) {
       rod.innerHTML = `
         <div class="film-baggrund"></div>
         ${slag.map(bygSlag).join('')}
-        <div class="film-spring">Mellemrum · Enter · klik: spring over</div>
-        <div class="film-venter">Venter på de andre …</div>`;
+        <div class="film-spring" role="button" tabindex="-1">
+          <kbd class="film-spring-tast">Mellemrum</kbd>
+          <span class="film-spring-tekst">spring over</span>
+          <span class="film-spring-taelling"></span>
+          <ul class="film-spring-hvem"></ul>
+        </div>`;
+      stemmeNoegle = '';
       for (const plads of rod.querySelectorAll('.film-klip[data-video]')) {
         const v = klipTil(plads.dataset.video);
         v.pause();
@@ -243,14 +249,15 @@ export function lavFilmIntro(rod) {
         plads.appendChild(v);
       }
       tegnPladsholdere(rod);
-      rod.classList.remove('skjult', 'venter', 'faerdig');
+      rod.classList.remove('skjult', 'stemt', 'tilskuer', 'faerdig');
+      delete rod.dataset.stemmer;
       rod.setAttribute('aria-hidden', 'false');
     },
 
     /** ms er filmens tid (fra simulationens ur). Tænder det rigtige slag.
      *  Går aldrig baglæns: et slag, der er vist, kommer ikke igen. */
     opdater(ms) {
-      if (!slag.length || rod.classList.contains('venter')) return;
+      if (!slag.length) return;
       let i = slag.findIndex((s) => ms >= s.fra && ms < s.til);
       if (i < 0) i = ms >= slag[slag.length - 1].til ? slag.length : 0;
       if (i <= aktivt) { styrKlip(ms); return; }
@@ -267,11 +274,55 @@ export function lavFilmIntro(rod) {
       styrKlip(ms);
     },
 
-    /** Spilleren sprang over: skjul filmen (over nettet står "venter" tilbage). */
-    spring(venter) {
-      stopKlip();
-      if (venter) rod.classList.add('venter');
+    /** Spilleren trykkede mellemrum. Ved ét tastatur slutter filmen; over
+     *  nettet er det en stemme, og filmen kører videre, til et flertal har stemt. */
+    spring(net) {
+      if (net) rod.classList.add('stemt');
       else this.stop();
+    },
+
+    /**
+     * Afstemningen om at springe over (kun netværk). alle er deltagerne:
+     * [{ pid, navn, stemt, mig }], kraevet hvor mange stemmer der skal til.
+     * Uden argument (ét tastatur): bare "Mellemrum · spring over".
+     */
+    stemmer(info) {
+      const noegle = info ? JSON.stringify(info) : '';
+      if (noegle === stemmeNoegle || !slag.length) return;
+      stemmeNoegle = noegle;
+      const boks = rod.querySelector('.film-spring');
+      if (!boks) return;
+      const tekst = boks.querySelector('.film-spring-tekst');
+      const taelling = boks.querySelector('.film-spring-taelling');
+      const hvem = boks.querySelector('.film-spring-hvem');
+      if (!info) {
+        delete rod.dataset.stemmer;
+        rod.classList.remove('tilskuer');
+        boks.querySelector('.film-spring-tast').hidden = false;
+        tekst.textContent = 'spring over';
+        taelling.textContent = '';
+        hvem.innerHTML = '';
+        return;
+      }
+      const stemte = info.alle.filter((d) => d.stemt).length;
+      const mig = info.alle.find((d) => d.mig);
+      rod.dataset.stemmer = String(stemte);
+      boks.dataset.stemmer = String(stemte);
+      boks.dataset.kraevet = String(info.kraevet);
+      rod.classList.toggle('stemt', !!mig?.stemt);
+      // Tilskuere (og andre uden fighter i kampen) ser afstemningen, men stemmer ikke.
+      const tilskuer = !info.kanStemme;
+      rod.classList.toggle('tilskuer', tilskuer);
+      boks.querySelector('.film-spring-tast').hidden = tilskuer;
+      if (tilskuer) boks.setAttribute('aria-disabled', 'true'); else boks.removeAttribute('aria-disabled');
+      const mangler = Math.max(0, info.kraevet - stemte);
+      tekst.textContent = tilskuer ? 'spillerne stemmer om at springe over'
+        : mig?.stemt
+          ? (mangler ? `du har stemt · ${mangler} mere, så springes filmen over` : 'springer over …')
+          : 'stem for at springe over';
+      taelling.textContent = `${stemte}/${info.kraevet}`;
+      hvem.innerHTML = info.alle.map((d) =>
+        `<li class="film-spring-stemme${d.stemt ? ' stemt' : ''}${d.mig ? ' mig' : ''}">${esc(d.navn)}</li>`).join('');
     },
 
     stop() {

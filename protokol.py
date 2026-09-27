@@ -13,11 +13,13 @@ FORTOLKES = {
     "opret": "alle",
     "tilslut": "alle",
     "forlad": "deltager",
-    "saede": "deltager",
-    "navngiv": "deltager",
-    "klar": "deltager",
+    "navngiv": "deltager",      # forældet; modtages, men gør ingenting
+    "vaelg": "deltager",        # min fighter
+    "hold": "deltager",         # mit hold: blåt eller rødt
+    "stem": "deltager",         # min banestemme
+    "klar": "deltager",         # også værten — nedtællingen venter på alle
     "indst": "vaert",
-    "start": "vaert",
+    "start": "vaert",           # med det samme, uden nedtælling; karaktervalget bruger den ikke længere
     "smid_ud": "vaert",
     "ping": "alle",
     "snap_bed": "deltager",
@@ -31,7 +33,7 @@ RELAEES = {
     "haendelse": "vaert",
     "vaaben": "vaert",
     "snapshot": "vaert",    # adresseret via "to"
-    "slut": "vaert",
+    "slut": "vaert",        # kampen er slut: rummet går tilbage til lobbyen (rum._relae)
     "in": "deltager",       # input fra den aktive spiller, kun til værten
     "chat": "deltager",
     "emote": "deltager",
@@ -53,18 +55,19 @@ FEJL = {
     "rum_fuldt": "Rummet er fuldt (12 deltagere).",
     "i_gang": "Kampen er allerede i gang — du er tilskuer.",
     "kun_vaert": "Kun værten kan gøre det.",
-    "for_faa_hold": "Der skal være mindst to hold med bævere.",
-    "for_mange_hold": "Der kan højst være fire hold.",
-    "for_mange_baevere": "Der kan højst være 12 bævere i alt.",
+    "for_faa_hold": "Begge hold skal have mindst én spiller.",
+    "for_mange_baevere": "Der kan højst være 12 spillere i kampen.",
     "ikke_klar": "Alle deltagere skal være klar, før kampen kan starte.",
-    "ikke_dit_saede": "Det sæde tilhører en anden.",
-    "to_hold": "Du kan kun have bævere på ét hold.",
     "for_mange_forsoeg": "For mange forsøg — vent et minut.",
     "ukendt_besked": "Ukendt besked.",
     "ikke_i_rum": "Du er ikke i et rum.",
     "server_fuld": "Serveren er fuld — prøv igen om lidt.",
     "for_mange_rum": "Der er for mange rum i gang — prøv igen om lidt.",
     "navn_kraevet": "Du skal angive et navn.",
+    "laast_karakter": "Den karakter kommer snart.",
+    "ukendt_hold": "Det hold findes ikke.",
+    "vaelg_hold": "Vælg blåt eller rødt hold først.",
+    "ukendt_bane": "Den bane findes ikke.",
 }
 
 

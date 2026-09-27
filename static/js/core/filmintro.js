@@ -32,7 +32,8 @@ export const FILM_MS = {
  * skal kende den deterministisk. Uden tal: FILM_MS.kunde.
  */
 export const FILM_KUNDE_MS = {
-  21: 10000,       // Dr. Jan fra Mors — 21.mp4, 10,0 s
+  16: 8775,        // Skrankepaven Ingrid — 16.mp4, 8,775 s
+  21: 9650,        // Dr. Jan fra Mors — 21.mp4, 9,65 s
 };
 export const kundeMs = (figur) => FILM_KUNDE_MS[figur] ?? FILM_MS.kunde;
 
@@ -62,6 +63,9 @@ function ansat(b) {
  * baevere [{ id, hold, navn, udseende }]. Svarer [] når ingen ansatte er med
  * — så springes filmen helt over.
  *
+ * Samme karakter flere gange på ét hold (spejlvalg i karaktervalget)
+ * præsenteres én gang; VS-slaget viser dem alle.
+ *
  * Hvert slag: { type, fra, til } i ms plus det, skærmen skal vise:
  *   klinik { holdIdx, farve, navn, side }
  *   kunde  { holdIdx, farve, baever, figur, navn, side, nr }
@@ -72,7 +76,7 @@ export function filmTidslinje(hold, baevere) {
   const raekker = hold.map((h, i) => ({
     holdIdx: i, farve: h.farve, navn: h.navn,
     kunder: baevere.filter((b) => b.hold === i && ansat(b))
-      .map((b) => ({ baever: b.id, figur: b.udseende.figur, navn: b.navn })),
+      .map((b) => ({ baever: b.id, figur: b.udseende.figur, navn: b.navn, grundnavn: ansat(b).navn })),
   }));
   if (!raekker.some((r) => r.kunder.length)) return [];
 
@@ -84,14 +88,20 @@ export function filmTidslinje(hold, baevere) {
     if (!r.kunder.length) continue;              // klinikker uden personale præsenteres ikke
     const side = r.holdIdx % 2 ? 'hoejre' : 'venstre';
     laeg('klinik', FILM_MS.klinik, { holdIdx: r.holdIdx, farve: r.farve, navn: r.navn, side });
-    r.kunder.forEach((k, nr) => laeg('kunde', kundeMs(k.figur), {
-      holdIdx: r.holdIdx, farve: r.farve, baever: k.baever, figur: k.figur, navn: k.navn, side, nr,
+    const set = new Set();
+    r.kunder.filter((k) => !set.has(k.figur) && set.add(k.figur)).forEach((k, nr) => laeg('kunde', kundeMs(k.figur), {
+      // Karakterens eget navn — romertallet ("… II") er til kampen, ikke filmen.
+      holdIdx: r.holdIdx, farve: r.farve, baever: k.baever, figur: k.figur, navn: k.grundnavn, side, nr,
     }));
   }
   laeg('vs', FILM_MS.vs, { raekker: raekker.filter((r) => r.kunder.length) });
   laeg('slut', FILM_MS.slut, {});
   return slag;
 }
+
+/** Så mange stemmer skal der til for at springe filmen over i et netværksspil:
+ *  et flertal, mere end halvdelen af deltagerne (2 af 2, 2 af 3, 3 af 4). */
+export const filmFlertal = (deltagere) => Math.floor(deltagere / 2) + 1;
 
 /** Filmens længde i tick (0 = ingen film). */
 export function filmTicks(hold, baevere) {

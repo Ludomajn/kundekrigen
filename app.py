@@ -100,6 +100,19 @@ def modulgraf(start="/js/main.js"):
     return set_
 
 
+# Stilarkene får filens ændringstid på som ?v=…, så en ny CSS altid hentes
+# (også hvor browseren ellers genbruger sin cachede kopi ved en genindlæsning).
+CSS_LINK = re.compile(r'(<link rel="stylesheet" href=")(/[^"?#]+\.css)(")')
+
+
+def _css_version(m):
+    try:
+        v = f"{(STATIC / m.group(2).lstrip('/')).stat().st_mtime_ns:x}"
+    except OSError:
+        return m.group(0)
+    return f"{m.group(1)}{m.group(2)}?v={v}{m.group(3)}"
+
+
 def preload_links():
     """<link>-linjerne til index.html. Genberegnes kun, når en fil i grafen
     er ændret (en ny import kræver, at den importerende fil ændres)."""
@@ -198,6 +211,7 @@ class App(BaseHTTPRequestHandler):
         except OSError:
             return self._send(404, "404 — ikke fundet".encode("utf-8"))
         html = html.replace("</head>", preload_links() + "</head>", 1)
+        html = CSS_LINK.sub(_css_version, html)
         return self._send(200, html.encode("utf-8"), "text/html; charset=utf-8")
 
     def serve_file(self, p: Path):

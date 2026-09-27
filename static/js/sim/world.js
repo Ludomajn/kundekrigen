@@ -24,7 +24,7 @@ import * as TU from './turn.js';
 import { VAABEN, startAmmo, tilfaeldigtKassevaaben, kasseAntal, FAVORITTER } from './weapons.js';
 import { valider, K } from './commands.js';
 import { OPKALD, TELEFON_MAKS } from './opkald.js';
-import { filmTicks } from '../core/filmintro.js';
+import { filmTicks, filmFlertal } from '../core/filmintro.js';
 
 /* Ro mellem handlingerne (tick): efter en tur uden skade, og efter en tur,
  * hvor nogen blev ramt — så nedtællingen og reaktionen når at blive set. */
@@ -338,15 +338,14 @@ class Verden {
     return [...s].sort();
   }
 
-  /** En spiller vil springe filmen over. Ved ét tastatur (pid null) sker det
-   *  med det samme; over nettet først, når alle deltagere har trykket — så
-   *  ingen mister introen, fordi en anden var utålmodig. */
+  /** En spiller stemmer for at springe filmen over. Ved ét tastatur (pid
+   *  null) sker det med det samme; over nettet, når et flertal af deltagerne
+   *  har stemt (mere end halvdelen — ved to spillere altså begge). */
   _springFilm(pid) {
     if (this.tur.tilstand !== T.FILM) return;
     const sprunget = this.tur.filmSprunget || (this.tur.filmSprunget = []);
     if (pid != null && !sprunget.includes(pid)) sprunget.push(pid);
-    const alle = this._deltagere();
-    if (pid == null || alle.every((p) => sprunget.includes(p))) this._slutFilm();
+    if (pid == null || sprunget.length >= filmFlertal(this._deltagere().length)) this._slutFilm();
   }
 
   _slutFilm() {

@@ -9,7 +9,9 @@
  */
 'use strict';
 
-const TIDER = { titel: 0, tre: 1100, to: 2050, en: 3000 };
+// Tallene følger speakerens "3 … 2 … 1 … sæt i gang" (stemme_announcer_321_saet_i_gang,
+// startet på 3-tallet): "to" kommer 0,86 s og "en" 1,78 s efter "tre".
+const TIDER = { titel: 0, tre: 1100, to: 1960, en: 2880 };
 
 export function lavIntro(rod) {
   let el = null, timere = [], aktiv = false, vedTal = null;
