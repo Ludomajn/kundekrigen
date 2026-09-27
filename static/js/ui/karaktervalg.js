@@ -329,6 +329,13 @@ function lavVideo(figur) {
  *  ventetid. Kun klip, der laves her, får load(): et genbrugt klip med
  *  autoplay ville ellers starte igen, også uden for dokumentet. */
 function forvarmKlip() {
+  if (WEBKIT) {                          // Safari: de animerede WebP'er i forvejen, ingen klip
+    for (const r of ROSTER) {
+      const w = filmData?.figurer?.[r.figur]?.valg_webp;
+      if (r.status !== 'laast' && w) hentBillede(MAPPE + w);
+    }
+    return;
+  }
   for (const r of ROSTER) {
     const d = filmData?.figurer?.[r.figur];
     if (r.status !== 'laast' && (d?.valg_video || d?.valg_video_safari) && !videoer.has(r.figur)) lavVideo(r.figur).load();
@@ -342,12 +349,19 @@ function stopAlleKlip() {
 }
 
 /** Kilden til figur; medVideo: false (holdkammeraterne bagved) springer loopet over. */
+/*
+ * Safari (og alt på iOS) får IKKE klippet: HEVC-udgavens gennemsigtighed viste
+ * figuren helt usynlig, og VP9-alfa kan WebKit ikke. Dér er loopet en animeret
+ * WebP med alfa i et <img> (intro.json → valg_webp), som alle browsere kan.
+ */
+const webpFejl = new Set();
 function kildeFor(figur, medVideo = true) {
   if (figur == null) return 'tom';
   if (figur === 'tilfaeldig') return 'tilfaeldig';
   if (!filmData) return 'venter';
   const d = filmData.figurer?.[figur] || {};
-  if (medVideo && (d.valg_video || d.valg_video_safari) && !videoFejl.has(figur)) return 'video';
+  if (medVideo && WEBKIT && d.valg_webp && !webpFejl.has(figur) && !reduceret()) return 'webp';
+  if (medVideo && !WEBKIT && (d.valg_video || d.valg_video_safari) && !videoFejl.has(figur)) return 'video';
   if (d.portraet && !portraetFejl.has(figur)) return 'portraet';
   return 'figur';
 }
@@ -381,6 +395,14 @@ function lavFighter(n, planlaeg) {
       v.autoplay = !reduceret();
       video = v;
       return v;
+    }
+    if (kilde === 'webp') {
+      const img = document.createElement('img');
+      img.className = 'kv-fighter-billede kv-fighter-anim';
+      img.alt = ''; img.draggable = false; img.decoding = 'async';
+      img.onerror = () => { webpFejl.add(figur); planlaeg(); };
+      img.src = MAPPE + filmData.figurer[figur].valg_webp;
+      return img;
     }
     if (kilde === 'portraet') {
       const img = document.createElement('img');
