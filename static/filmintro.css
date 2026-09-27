@@ -1,0 +1,108 @@
+/* Kundekrigen — filmintroen før kampen.
+ *
+ * EJES AF ART DIRECTOREN (se docs/filmintro.md). Denne første udgave er en
+ * pladsholder, så filmen kan ses og times; den må skrives helt om. Kontrakten
+ * er klassenavnene og de tre variabler, JS sætter:
+ *   .film[data-slag]            aktuelt slag: titel | klinik | kunde | vs | slut
+ *   .film.venter / .faerdig      sprunget over (venter på de andre) / på vej ud
+ *   .film-slag.aktiv / .forbi    slaget vises nu / er vist
+ *   [data-side=venstre|hoejre]   klinikkens side (lige hold venstre, ulige højre)
+ *   [data-klinik] [data-figur]   klinik (groen, blaa, roed, gul) og figur (16-21)
+ *   --slag-ms                    slagets varighed
+ *   --klinik-farve               klinikkens farve
+ *   --forsinkelse                negativ, når man kommer ind midt i et slag
+ *                                (brug den som animation-delay)
+ */
+
+.film{
+  position:fixed;inset:0;z-index:50;overflow:hidden;color:var(--white);font-family:var(--font);
+  background:radial-gradient(130% 100% at 50% 40%,#16495F 0%,#0B2A3A 55%,#051620 100%);
+  transition:opacity .4s ease;
+}
+.film.skjult{display:none}
+.film.faerdig{opacity:0}
+.film-baggrund{position:absolute;inset:0;pointer-events:none;
+  background:repeating-linear-gradient(115deg,rgba(255,255,255,.035) 0 2px,transparent 2px 38px)}
+
+.film-slag{position:absolute;inset:0;display:none}
+.film-slag.aktiv{display:flex}
+.film-slag.aktiv > *{animation-delay:var(--forsinkelse,0ms)}
+
+/* ---- titel */
+.film-titel{flex-direction:column;align-items:center;justify-content:center;gap:10px}
+.film-logo{width:120px;height:75px}
+.film-titel-navn{font-weight:900;font-size:clamp(40px,8vw,96px);letter-spacing:.16em;line-height:1}
+.film-titel-under{font-size:clamp(11px,1.6vw,16px);letter-spacing:.34em;color:var(--kk-ice);text-transform:uppercase}
+.film-titel.aktiv > *{animation:filmSlag .5s cubic-bezier(.2,1.4,.4,1) both}
+.film-titel.aktiv > .film-titel-under{animation-duration:.8s}
+
+/* ---- klinik */
+.film-klinik{align-items:center;justify-content:center}
+.film-klinik::before{content:'';position:absolute;inset:38% -10%;background:var(--klinik-farve);
+  transform:skewY(-4deg);box-shadow:0 20px 60px -20px rgba(0,0,0,.6)}
+.film-klinik-navn{position:relative;font-weight:900;font-size:clamp(26px,5vw,60px);letter-spacing:.06em;
+  text-transform:uppercase;text-shadow:0 4px 0 rgba(0,0,0,.25)}
+.film-klinik.aktiv::before{animation:filmBaandV .45s cubic-bezier(.2,.9,.3,1) both;animation-delay:var(--forsinkelse,0ms)}
+.film-klinik[data-side=hoejre].aktiv::before{animation-name:filmBaandH}
+.film-klinik.aktiv .film-klinik-navn{animation:filmSlag .5s .1s cubic-bezier(.2,1.4,.4,1) both}
+
+/* ---- kunde */
+.film-kunde{align-items:flex-end;justify-content:flex-start;padding:0 6vw}
+.film-kunde[data-side=hoejre]{flex-direction:row-reverse}
+.film-kunde::before{content:'';position:absolute;inset:0;
+  background:linear-gradient(90deg,var(--klinik-farve) 0%,transparent 62%);opacity:.35}
+.film-kunde[data-side=hoejre]::before{background:linear-gradient(270deg,var(--klinik-farve) 0%,transparent 62%)}
+.film-portraet{position:relative;height:min(88vh,64vw);aspect-ratio:480/560;display:flex;align-items:flex-end;flex:0 0 auto}
+.film-portraet-billede,.film-portraet-plads{width:100%;height:100%;object-fit:contain;
+  filter:drop-shadow(0 18px 30px rgba(0,0,0,.55))}
+.film-skilt{position:relative;align-self:center;max-width:44vw;margin:0 3vw}
+.film-navn{font-weight:900;font-size:clamp(28px,5vw,64px);line-height:1;text-transform:uppercase}
+.film-rolle{margin-top:10px;font-weight:700;font-size:clamp(12px,1.6vw,18px);letter-spacing:.3em;
+  text-transform:uppercase;color:var(--klinik-farve)}
+.film-replik{margin:18px 0 0;font-size:clamp(15px,2vw,24px);font-style:italic;color:var(--kk-ice)}
+.film-kunde.aktiv .film-portraet{animation:filmIndV .45s cubic-bezier(.2,.9,.3,1) both}
+.film-kunde[data-side=hoejre].aktiv .film-portraet{animation-name:filmIndH}
+.film-kunde.aktiv .film-navn{animation:filmSlag .45s .15s cubic-bezier(.2,1.4,.4,1) both}
+.film-kunde.aktiv .film-rolle{animation:filmOp .4s .3s ease-out both}
+.film-kunde.aktiv .film-replik{animation:filmOp .5s .45s ease-out both}
+
+/* ---- kunde med filmklip (docs/filmintro-veo.md) — pladsholder: klippet fylder
+   skærmen, og skiltet står nederst til højre over Veo-vandmærket.
+   --skilt-ms (fra intro.json) er sat på sektionen, når der er et tal. */
+.film-kunde[data-video]{padding:0}
+.film-kunde[data-video]::before{display:none}
+.film-klip{position:absolute;inset:0;background:#000}
+.film-video{width:100%;height:100%;object-fit:cover;display:block}
+.film-kunde[data-video] .film-skilt{position:absolute;right:3vw;bottom:5vh;margin:0;max-width:60vw;text-align:right;
+  padding:12px 18px;background:rgba(5,22,32,.72);border-left:6px solid var(--klinik-farve)}
+.film-kunde[data-video] .film-replik{display:none}
+
+/* ---- VS */
+.film-vs{align-items:center;justify-content:center;gap:2vw;padding:0 3vw}
+.film-vs-hold{display:flex;flex-direction:column;align-items:center;gap:1vh}
+.film-vs-klinik{font-weight:900;font-size:clamp(14px,2vw,24px);text-transform:uppercase;letter-spacing:.08em;
+  padding:6px 14px;border-radius:999px;background:var(--klinik-farve)}
+.film-vs-kunder{display:flex;gap:.5vw}
+.film-vs-kunde{display:flex;flex-direction:column;align-items:center}
+.film-vs-kunde .film-portraet{height:min(38vh,12vw)}
+.film-vs-navn{font-weight:700;font-size:clamp(10px,1.2vw,14px);text-align:center;max-width:14vw}
+.film-vs-tegn{font-weight:900;font-size:clamp(48px,9vw,120px);color:var(--kk-yellow);
+  text-shadow:0 6px 0 rgba(0,0,0,.3)}
+.film-vs.aktiv .film-vs-hold[data-side=venstre]{animation:filmIndV .5s cubic-bezier(.2,.9,.3,1) both}
+.film-vs.aktiv .film-vs-hold[data-side=hoejre]{animation:filmIndH .5s cubic-bezier(.2,.9,.3,1) both}
+.film-vs.aktiv .film-vs-tegn{animation:filmSlag .5s .35s cubic-bezier(.2,1.6,.4,1) both}
+
+/* ---- spring over / venter */
+.film-spring,.film-venter{position:absolute;right:20px;bottom:16px;font-size:12px;letter-spacing:.08em;
+  color:rgba(207,232,240,.7)}
+.film-venter{display:none;left:0;right:0;bottom:50%;text-align:center;font-size:18px;color:var(--white)}
+.film.venter .film-slag,.film.venter .film-spring{display:none}
+.film.venter .film-venter{display:block}
+
+@keyframes filmSlag{from{opacity:0;transform:scale(1.6)}to{opacity:1;transform:none}}
+@keyframes filmOp{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:none}}
+@keyframes filmIndV{from{opacity:0;transform:translateX(-40vw)}to{opacity:1;transform:none}}
+@keyframes filmIndH{from{opacity:0;transform:translateX(40vw)}to{opacity:1;transform:none}}
+@keyframes filmBaandV{from{transform:skewY(-4deg) translateX(-110%)}to{transform:skewY(-4deg)}}
+@keyframes filmBaandH{from{transform:skewY(-4deg) translateX(110%)}to{transform:skewY(-4deg)}}
+@media (prefers-reduced-motion:reduce){.film *{animation:none!important}}

@@ -24,6 +24,7 @@ import * as TU from './turn.js';
 import { VAABEN, startAmmo, tilfaeldigtKassevaaben, kasseAntal, FAVORITTER } from './weapons.js';
 import { valider, K } from './commands.js';
 import { OPKALD, TELEFON_MAKS } from './opkald.js';
+import { filmTicks } from '../core/filmintro.js';
 
 /* Ro mellem handlingerne (tick): efter en tur uden skade, og efter en tur,
  * hvor nogen blev ramt — så nedtællingen og reaktionen når at blive set. */
@@ -329,6 +330,30 @@ class Verden {
     return this.baevere.find((b) => b.id === this.tur.baeverId) || null;
   }
 
+  /** Alle spillere i kampen (pid'er), i fast rækkefølge. */
+  _deltagere() {
+    const s = new Set();
+    for (const h of this.hold) for (const p of h.spillere || []) s.add(p);
+    for (const b of this.baevere) if (b.ejer) s.add(b.ejer);
+    return [...s].sort();
+  }
+
+  /** En spiller vil springe filmen over. Ved ét tastatur (pid null) sker det
+   *  med det samme; over nettet først, når alle deltagere har trykket — så
+   *  ingen mister introen, fordi en anden var utålmodig. */
+  _springFilm(pid) {
+    if (this.tur.tilstand !== T.FILM) return;
+    const sprunget = this.tur.filmSprunget || (this.tur.filmSprunget = []);
+    if (pid != null && !sprunget.includes(pid)) sprunget.push(pid);
+    const alle = this._deltagere();
+    if (pid == null || alle.every((p) => sprunget.includes(p))) this._slutFilm();
+  }
+
+  _slutFilm() {
+    this.tur.tilstand = T.UDSAET;
+    this.tur.tilstandTick = 0;
+  }
+
   pidPaaHold(pid, holdId) {
     const h = this.hold[holdId];
     if (!h) return false;
@@ -384,6 +409,14 @@ class Verden {
   // ------------------------------------------------------------ kommandoer
 
   udfoerKommando(cmd, pid = null) {
+    // Spring filmintroen over. Den har ingen aktiv kunde, så den går uden om
+    // valider; kun deltagere tæller, og hvem der sendte den, følger med.
+    if (cmd?.k === 'film') {
+      if (this.tur.tilstand !== T.FILM) return { ok: false, fejl: 'ingen film' };
+      if (pid != null && !this._deltagere().includes(pid)) return { ok: false, fejl: 'ikke med i kampen' };
+      this.koe.push({ k: 'film', pid });
+      return { ok: true };
+    }
     const res = valider(this, cmd, pid);
     if (!res.ok) return res;
     this.koe.push(cmd);
@@ -393,6 +426,7 @@ class Verden {
   _draenKommandoer(h) {
     for (const cmd of this.koe) {
       if (cmd.k === 'hold') { this.holdt = cmd.b; continue; }
+      if (cmd.k === 'film') { this._springFilm(cmd.pid); continue; }
       this._handling(cmd, h);
     }
     this.koe.length = 0;
@@ -674,6 +708,10 @@ class Verden {
     tur.tilstandTick++;
 
     switch (tur.tilstand) {
+      case T.FILM:
+        if (tur.tilstandTick >= (tur.filmTicks || 0)) this._slutFilm();
+        break;
+
       case T.UDSAET:
         // 4 s: introens nedtælling (ui/intro.js) når at blive færdig.
         if (tur.tilstandTick > 240) this._turStart(h);
@@ -1096,6 +1134,16 @@ class Verden {
   startKamp() {
     this.udsaet();
     this._udstyrBanen();
+    // Filmintroen først (kun når klinikkernes ansatte er med). Længden er
+    // regnet ud fra opstillingen alene, så alle er enige om, hvornår den
+    // første tur starter; tur-felterne følger med i snapshottet.
+    const film = filmTicks(this.hold, this.baevere);
+    if (film > 0) {
+      this.tur.tilstand = T.FILM;
+      this.tur.tilstandTick = 0;
+      this.tur.filmTicks = film;
+      this.tur.filmSprunget = [];
+    }
     return [{ navn: 'kampStartet', froe: this.froeBrugt, banetype: this.banetype,
               vejr: this.vejr, vand: this.vandNiveau }];
   }

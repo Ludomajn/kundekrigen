@@ -1,0 +1,50 @@
+{
+  "_om": "Filmintroens grafik og tekster (ejes af art directoren; se docs/filmintro.md). Tomme felter bruger standarden: portræt = figuren tegnet fra figurarket, rolle og replik fra core/filmintro.js.",
+  "figurer": {
+    "16": {
+      "navn": null,
+      "rolle": null,
+      "replik": "Har du en tid? Nej? Så har du et problem.",
+      "portraet": null,
+      "stemme": null
+    },
+    "17": {
+      "navn": null,
+      "rolle": null,
+      "replik": null,
+      "portraet": null,
+      "stemme": null
+    },
+    "18": {
+      "navn": null,
+      "rolle": null,
+      "replik": null,
+      "portraet": null,
+      "stemme": null
+    },
+    "19": {
+      "navn": null,
+      "rolle": null,
+      "replik": null,
+      "portraet": null,
+      "stemme": null
+    },
+    "20": {
+      "navn": null,
+      "rolle": null,
+      "replik": null,
+      "portraet": null,
+      "stemme": null
+    },
+    "21": {
+      "navn": null,
+      "rolle": null,
+      "replik": "A er ikk' sur. A er bar' fra Mors.",
+      "portraet": null,
+      "stemme": null,
+      "video": "21.mp4",
+      "skilt_ms": null
+    }
+  },
+  "_replikker": "16 er replikken fra Veo-klippet. 21 er et forslag, indtil brugerens egen dialog kommer (se Assets/Cartoon Characters/Kundekrigen klinikker/Veo/VEO-PROMPTS.md)."
+}

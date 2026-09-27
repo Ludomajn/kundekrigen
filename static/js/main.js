@@ -43,6 +43,9 @@ import { lavMenu } from './ui/menu.js';
 import { lavHjaelp } from './ui/hjaelp.js';
 import { lavSejrsfest } from './ui/sejrsfest.js';
 import { lavIntro } from './ui/intro.js';
+import { lavFilmIntro, hentFilmData } from './ui/filmintro.js';
+import { filmTidslinje } from './core/filmintro.js';
+import { PERSONALE, HOLD_NAVNE } from './core/klinikker.js';
 import { holdFarve } from './render/palette.js';
 import { indlaesProfil, gemProfil, gemSession, hentSession, NAVNEPULJE } from './ui/customise.js';
 import { T, mmss, BANE_NAVN, VEJR_NAVN } from './ui/tekst.js';
@@ -60,6 +63,9 @@ import { lavKlient } from './net/client.js';
 const laerred = document.getElementById('laerred');
 const hudRod = document.getElementById('hud');
 const menuRod = document.getElementById('menu');
+// Filmintroen ligger over alt andet end startskærmen (se ui/filmintro.js).
+const filmRod = document.body.appendChild(document.createElement('div'));
+const film = lavFilmIntro(filmRod);
 const panelRod = document.getElementById('panel');
 const indlaesRod = document.getElementById('indlaeser');
 const hjaelpRod = document.getElementById('hjaelp');
@@ -314,8 +320,9 @@ function paaBesked(m) {
       hud?.banner(T.net.vaertSkiftet(m.d.navn), 3000);
       break;
     case 'kamp_afbrudt':
-      hud?.banner(m.d.grund || T.net.kampAfbrudt, 4000, 'advarsel');
       S.tilstand = 'lobby';
+      slutFilm();
+      hud?.banner(m.d.grund || T.net.kampAfbrudt, 4000, 'advarsel');
       lyd.stopAlleLoekker();
       lyd.stopStemme();
       break;
@@ -416,6 +423,10 @@ function visResultat() {
 }
 
 async function startKamp(opsaet) {
+  // Den forrige kamps Worker (Spil igen) må ikke blive ved at sende tilstande
+  // ind i den nye kamps spejl — og en halv film fra sidst skal væk.
+  S.sim?.luk(); S.sim = null;
+  slutFilm();
   slutFest();
   S.laegeKaldt = new Set();
   S.skudUde = null;
@@ -464,8 +475,9 @@ async function startKamp(opsaet) {
 
   S.verden.favoritter = S.profil.favoritter;
   hud.byggFavoritter(S.profil.favoritter);
-  indlaesRod.classList.add('hide');
-  hjaelp.saetSynlig(true);
+  // Indlæsningen står, til simulationens første tilstand er her (opdaterVisning):
+  // så kommer filmen direkte, uden at banen blinker forbi først.
+  S.venterSim = performance.now();
 
   const b = S.verden.aktivBaever() || S.verden.baevere[0];
   if (b) visning.kamera.snap(b.x, b.y + 60);
@@ -877,7 +889,7 @@ function loop(nu) {
     // Workeren og fortsætter uanset om fanen er synlig.
     S.klient?.interpoler();
     opdaterVisning(dt, nu / 1000);
-  }
+  } else if (S.film) slutFilm();        // kampen er forladt midt i filmen
   r.tegn();
 }
 
@@ -973,6 +985,14 @@ function taelSkade(v, vi, nu) {
 function opdaterVisning(dt, tid) {
   const v = S.verden;
   const vi = visning;
+  if (S.venterSim) {
+    const kom = v.tur.tilstand !== TIL.LOBBY && v.tur.tilstand !== TIL.GENERERER;
+    if (!kom && performance.now() - S.venterSim < 10000) return;   // højst 10 s, så ingen hænger
+    S.venterSim = 0;
+    indlaesRod.classList.add('hide');
+    if (v.tur.tilstand !== TIL.FILM) hjaelp.saetSynlig(true);
+  }
+  opdaterFilm(v, dt);
 
   // Skridtene: ét fodtrin på kontortæppet ad gangen, i takt med gangen
   // (0,3 s). Gennem den fælles kanal, så de tier, når noget andet lyder.
@@ -1133,6 +1153,105 @@ function opdaterVisning(dt, tid) {
   hud.opdater(v, S.pid, tilstandTekst, S.oplader, lokalKraft(), minTur);
 }
 
+/* -------------------------------------------------------------- filmintro */
+
+/**
+ * Filmintroen følger simulationens tilstand FILM. Tidslinjen er den samme hos
+ * alle (core/filmintro.js), og uret er simulationens (tur.tilstandTick fra
+ * deltaen), glattet lokalt mellem deltaerne. Kommer man ind midt i filmen,
+ * starter man i det rigtige slag.
+ */
+function opdaterFilm(v, dt) {
+  const iFilm = v.tur.tilstand === TIL.FILM;
+  if (iFilm && !S.film) {
+    const slag = filmTidslinje(v.hold, v.baevere);
+    if (!slag.length) return;
+    S.film = { ms: ((v.tur.tilstandTick || 0) / HZ) * 1000, sprunget: false };
+    film.start(slag, { paaSlag: filmLyd, paaKlip: filmKlipLyd });
+    hudRod.classList.add('film-aktiv');
+    hjaelp.saetSynlig(false);
+  }
+  if (!S.film) return;
+  if (!iFilm) { slutFilm(); return; }
+  // Uret glattes lokalt mellem deltaerne. Det springer frem, hvis det halter,
+  // men går aldrig baglæns: halter nettet, står filmen stille i stedet for at
+  // vise (og sige) det forrige slag igen.
+  const fraSim = ((v.tur.tilstandTick || 0) / HZ) * 1000;
+  const ny = S.film.ms + dt * 1000;
+  S.film.ms = fraSim - ny > 200 ? fraSim : Math.max(S.film.ms, Math.min(ny, fraSim + 200));
+  if (!S.film.sprunget) film.opdater(S.film.ms);
+}
+
+function slutFilm() {
+  if (!S.film) return;
+  S.film = null;
+  film.stop();
+  hudRod.classList.remove('film-aktiv');
+  if (S.tilstand === 'spil') hjaelp.saetSynlig(true);
+}
+
+/** Spring over. Ved ét tastatur slutter simulationen filmen med det samme;
+ *  over nettet først, når alle har trykket — indtil da står "venter". */
+function springFilm() {
+  if (!S.film || S.film.sprunget) return;
+  S.film.sprunget = true;
+  afsend({ k: 'film' });
+  film.spring(S.erNet);
+}
+
+/** Lyd pr. slag — gennem den fælles kanal, så intet overlapper. */
+function filmLyd(slag, info) {
+  if (slag.type === 'titel' || slag.type === 'vs') lyd.afspil('intro_slam', { vigtig: true });
+  else if (slag.type === 'klinik') lyd.afspil('salto', { vol: 1.4 });
+  else if (slag.type === 'kunde') {
+    if (info?.video) return;                     // klippet har sin egen lyd (filmKlipLyd)
+    if (info?.stemme) lyd.stemme(info.stemme, { vigtig: true });
+    else lyd.afspil('kast', { vol: 1.3 });
+  }
+}
+
+/** Et klips lydspor er én lyd i den fælles kanal, så længe klippet spiller. */
+function filmKlipLyd(hvad, video, sek) {
+  if (hvad === 'start') { lyd.tilslutKlip(video); lyd.klipStart(sek); }
+  else lyd.klipSlut();
+}
+
+/**
+ * Forhåndsvisning til art directoren: /?film afspiller filmen med alle seks
+ * ansatte direkte fra forsiden — uden at starte en kamp — og gentager den.
+ * Esc stopper. (Også window.baevere.spilFilm().)
+ */
+async function spilFilm() {
+  await indlaesGrafik();
+  await hentFilmData();
+  const farver = Object.keys(PERSONALE);
+  const hold = farver.map((f) => ({ farve: f, navn: HOLD_NAVNE[f] }));
+  let id = 1;
+  const baevere = farver.flatMap((f, i) => PERSONALE[f].map((p) => ({
+    id: id++, hold: i, navn: p.navn, udseende: { v: 5, figur: p.figur, fast: true } })));
+  const slag = filmTidslinje(hold, baevere);
+  const laengde = slag[slag.length - 1].til;
+  S.filmForhaand = { start: performance.now() };
+  film.start(slag, { paaSlag: filmLyd, paaKlip: filmKlipLyd });
+  const trin = () => {
+    if (!S.filmForhaand) return;
+    const ms = performance.now() - S.filmForhaand.start;
+    // Et lille ophold efter slutningen, så forfra.
+    if (ms > laengde + 1200) { S.filmForhaand.start = performance.now(); film.start(slag, { paaSlag: filmLyd, paaKlip: filmKlipLyd }); }
+    else film.opdater(Math.min(ms, laengde));
+    requestAnimationFrame(trin);
+  };
+  requestAnimationFrame(trin);
+}
+function stopForhaand() {
+  S.filmForhaand = null;
+  film.stop();
+}
+filmRod.addEventListener('click', () => (S.film && S.tilstand === 'spil' ? springFilm() : S.filmForhaand && stopForhaand()));
+// intro.json er klar, når kampen starter — og dens replikker hentes med.
+hentFilmData().then((d) => lyd.hentLyde(Object.values(d?.figurer || {}).map((f) => f?.stemme)));
+if (new URLSearchParams(location.search).has('film')) spilFilm();
+
 /* ------------------------------------------------------------------ input */
 
 /**
@@ -1179,10 +1298,15 @@ function sendInput() {
 
 function afsend(cmd) {
   if (S.erVaert) S.sim?.send({ t: 'in', d: { cmd, pid: S.erNet ? S.pid : null } });
-  else S.transport.send({ t: 'in', d: cmd });
+  else S.transport?.send({ t: 'in', d: cmd });
 }
 
 tast.paaTryk((handling, e) => {
+  // Under filmintroen: mellemrum, Enter eller Esc springer over — intet andet.
+  if ((S.film && S.tilstand === 'spil') || S.filmForhaand) {
+    if (['Space', 'Enter', 'NumpadEnter', 'Escape'].includes(e.code)) (S.film ? springFilm() : stopForhaand());
+    return;
+  }
   if (panel.tast(e)) return;
   // Under festen springer Enter, mellemrum og Esc direkte til resultattavlen.
   if (S.tilstand === 'sejr' && S.festTimer) {
@@ -1449,6 +1573,7 @@ function holdFanenVaagen() {
 /* ------------------------------------------------------------------ afslut */
 
 function forladKamp() {
+  slutFilm();
   slutFest();
   S.transport?.send({ t: 'forlad', d: {} });
   S.transport?.luk();
@@ -1472,6 +1597,7 @@ function forladKamp() {
 window.baevere = {
   S, bus, r,
   visStartskaerm,                        // vis(tving=true) startskærmen, også hvor lyden er tilladt
+  spilFilm,                              // filmintroen i forhåndsvisning (også /?film)
   get verden() { return S.verden; },
   get tur() { return S.verden?.tur; },
   tegnEnFrame() {

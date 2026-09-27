@@ -17,6 +17,7 @@ import { HZ } from '../core/tick.js';
 export const T = {
   LOBBY: 'lobby',
   GENERERER: 'genererer',
+  FILM: 'film',            // filmintroen før kampen (core/filmintro.js)
   UDSAET: 'udsaet',
   TUR_START: 'tur_start',
   SPILLER_AKTIV: 'spiller_aktiv',

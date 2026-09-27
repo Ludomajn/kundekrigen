@@ -104,6 +104,29 @@ function indlaes() {
   return hentet;
 }
 
+/** Hent ekstra lyde, som ikke står i NAVNE — fx filmintroens replikker, som
+ *  art directoren nævner i grafik/intro/intro.json. Kun navne af formen
+ *  stemme_… eller k_…, og kun én gang hver. */
+const ekstra = new Set();
+export function hentLyde(navne) {
+  const nye = (navne || []).filter((n) => typeof n === 'string' && /^(stemme|k)_[a-z0-9_]+$/.test(n) &&
+                                          !NAVNE.includes(n) && !ekstra.has(n));
+  if (!nye.length) return;
+  nye.forEach((n) => ekstra.add(n));
+  const hent = () => {
+    if (!sikrKontekst()) return;
+    for (const navn of nye) {
+      fetch(`${STI}/${navn}.ogg`)
+        .then((r) => (r.ok ? r.arrayBuffer() : Promise.reject(new Error(r.status))))
+        .then((b) => ctx.decodeAudioData(b))
+        .then((buf) => buffere.set(navn, buf))
+        .catch(() => console.warn('[lyd] mangler', navn));
+    }
+  };
+  // Vent på de almindelige lyde (og brugerhandlingen), så de ikke deles om linjen.
+  (hentet || Promise.resolve()).then(hent);
+}
+
 /** Hver brugerhandling holder lydvejen åben — browsernes autoplay-regel.
  *
  * Lytteren bliver siddende hele besøget. Ikke alle input giver browseren lov
@@ -303,6 +326,45 @@ export function stemme(navn, { chance = 1, vol = 1, vigtig = false } = {}) {
   return spil(navn, { vol, stemme: true, vigtig });
 }
 
+/*
+ * Filmklip (filmintroens Veo-klip): videoens lydspor er ÉN lyd i den fælles
+ * kanal. Det går gennem lydmotoren (volumen og lyd fra gælder), og mens det
+ * spiller, er kanalen optaget som af en vigtig lyd: intet andet lyder
+ * samtidig, og de vigtige lyde venter i køen, til klippet er slut.
+ */
+const klipKilder = new WeakMap();
+let klipNu = null;
+
+/** Send videoens lyd gennem lydmotoren (én gang pr. element). */
+export function tilslutKlip(video) {
+  if (!sikrKontekst() || klipKilder.has(video)) return;
+  try {
+    const k = ctx.createMediaElementSource(video);
+    k.connect(master);
+    klipKilder.set(video, k);
+  } catch { /* uden Web Audio spiller videoen selv sin lyd */ }
+}
+
+/** Klippet spiller i sek sekunder endnu: det, der lyder, tones ud, og kanalen er optaget. */
+export function klipStart(sek) {
+  if (!ctx) return;
+  afbryd();
+  for (let i = koe.length - 1; i >= 0; i--) if (!koe[i].vigtig) koe.splice(i, 1);
+  optagetTil = ctx.currentTime + Math.max(0, sek);
+  klipNu = { vigtig: true, forrang: false, start: ctx.currentTime, g: null, kilde: null };
+  nuvaerende = klipNu;
+  saetMusikDuk(0.2);
+}
+
+/** Klippet er slut (eller sprunget over): kanalen er fri, og musikken kommer op igen. */
+export function klipSlut() {
+  if (!klipNu) return;
+  if (nuvaerende === klipNu) { nuvaerende = null; if (ctx) optagetTil = ctx.currentTime; }
+  klipNu = null;
+  saetMusikDuk(1);
+  naesteIKoe();
+}
+
 /** Stop det, der spiller, og tøm køen — alt skal være stille. */
 export function stopStemme() {
   koe.length = 0;
@@ -475,6 +537,7 @@ export function flyvelyd(p) {
 const SPOR = { musik_menu: 0.1, musik_kamp: 0.18 };
 const numre = new Map();             // navn -> { el, g }
 let musikVolumen = 1;
+let musikDuk = 1;                   // filmklip med egen lyd: musikken trækkes ned (klipStart)
 let sporNu = null;
 let oensket = null;                  // det nummer, spillet beder om — også før lyden er låst op
 
@@ -516,7 +579,7 @@ function startMusik(spor) {
   n.el.play().catch(() => { if (sporNu === spor) sporNu = null; });   // prøves igen næste gang
   n.g.gain.cancelScheduledValues(t);
   // Skift mellem numre toner blødt over; første start kommer hurtigt ind.
-  n.g.gain.setTargetAtTime(lydFra ? 0 : SPOR[spor] * musikVolumen, t, gammel ? 0.6 : 0.2);
+  n.g.gain.setTargetAtTime(lydFra ? 0 : SPOR[spor] * musikVolumen * musikDuk, t, gammel ? 0.6 : 0.2);
 }
 
 /** Venter, til menunummeret kan spille (eller højst maksMs). */
@@ -538,7 +601,7 @@ if (ctx) nummer('musik_menu');
 export function saetMusikVolumen(v) {
   musikVolumen = Math.max(0, Math.min(1, v));
   if (ctx && sporNu && numre.has(sporNu)) {
-    numre.get(sporNu).g.gain.setTargetAtTime(lydFra ? 0 : SPOR[sporNu] * musikVolumen, ctx.currentTime, 0.05);
+    numre.get(sporNu).g.gain.setTargetAtTime(lydFra ? 0 : SPOR[sporNu] * musikVolumen * musikDuk, ctx.currentTime, 0.05);
   }
 }
 
@@ -547,10 +610,18 @@ export function saetLydFra(fra) {
   lydFra = !!fra;
   if (master) master.gain.value = lydFra ? 0 : volumen;
   if (ctx && sporNu && numre.has(sporNu)) {
-    numre.get(sporNu).g.gain.setTargetAtTime(lydFra ? 0 : SPOR[sporNu] * musikVolumen, ctx.currentTime, 0.05);
+    numre.get(sporNu).g.gain.setTargetAtTime(lydFra ? 0 : SPOR[sporNu] * musikVolumen * musikDuk, ctx.currentTime, 0.05);
   }
 }
 export const erLydFra = () => lydFra;
+
+/** Træk musikken ned (0-1) og op igen (1) — blødt, så det ikke hopper. */
+function saetMusikDuk(f) {
+  musikDuk = f;
+  if (ctx && sporNu && numre.has(sporNu)) {
+    numre.get(sporNu).g.gain.setTargetAtTime(lydFra ? 0 : SPOR[sporNu] * musikVolumen * musikDuk, ctx.currentTime, 0.25);
+  }
+}
 
 /** Mastervolumen 0-1. Gemmes af kalderen (profilen); vi husker den kun. */
 export function saetVolumen(v) {

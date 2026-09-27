@@ -16,5 +16,12 @@ export class WorkerTransport extends Transport {
   }
   get forbundet() { return !!this.w; }
   send(obj) { this.w?.postMessage(obj); }
-  luk() { this.w?.postMessage({ t: 'stop' }); this.w?.terminate(); this.w = null; }
+  luk() {
+    if (!this.w) return;
+    // En lukket Worker må ikke nå at sende en sidste tilstand ind i den næste kamp.
+    this.w.onmessage = null;
+    this.w.postMessage({ t: 'stop' });
+    this.w.terminate();
+    this.w = null;
+  }
 }

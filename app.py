@@ -40,6 +40,8 @@ RUM_STI = re.compile(r"^/spil/([A-Za-z0-9]{%d})/?$" % rum.KODE_LAENGDE)
 
 mimetypes.add_type("application/javascript", ".js")
 mimetypes.add_type("image/svg+xml", ".svg")
+mimetypes.add_type("video/mp4", ".mp4")        # filmintroens klip
+mimetypes.add_type("video/webm", ".webm")
 
 
 # ------------------------------------------------------------ modulgrafen
