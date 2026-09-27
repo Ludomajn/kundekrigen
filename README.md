@@ -259,13 +259,13 @@ Platformer Pack".
   fald_0-1, land_0-2, udloes_0-2, doed_0-3 — og eksplosionen er én serie på
   20. `vaerktoej/tegneserieobjekter.py` pakker dem i `static/grafik/objekter/`
   og skriver `render/objekt_rig.js`; `render/objekt_view.js` giver quads med
-  fodpunkt og `animer(mesh, tilstand, t)`. Eksplosionen (`fx.js` eksAnim)
-  bruger dem allerede. **Mangler:** genstandene på banen i `lavGenstandView`
-  (mail/printer/opdatering/telefon/piller/kasser/faldskærm/gravsten) skal
-  skiftes til `objektMesh(navn, bredde)` + `animer()` — ringe, skilte og
-  minetal beholdes. Forslag til bredder i wu: værktøjskasse 34, pilleglas 17,
-  svævepille 22, phishing-mine 30, printer 34, tvangsopdatering 26,
-  bordtelefon 30, faldskærm 56 (fodpunkt på kassens top), gravsten 24.
+  fodpunkt og `animer(mesh, tilstand, t)`. `fx.js` bruger dem til
+  eksplosionen og alle genstande på banen (bredderne står i `OBJ`): kasserne
+  falder i faldskærm (fald), squasher ved landing, og skærmen klapper
+  sammen; minen blinker med sit "!" i takt med nedtællingen og lyser stille,
+  når den er armeret; telefonen ringer med røret; printeren blinker
+  PAPIRSTOP; opdateringens lunte gnistrer. Ringe, skilte og minetal er de
+  samme som før.
 - **Animationen** (`figur_view.js`) er figurernes egne frames: tomgang
   (5 fps), løb (11 fps), hop og fald, gravearbejde (angreb), jubel og døden.
   Hænderne er løse: begge følger framens håndpositioner, og når kunden

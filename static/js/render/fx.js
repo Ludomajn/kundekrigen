@@ -2,11 +2,11 @@
  * simulationen læser intet herfra. Bruger rngFx, som ALDRIG må røre
  * simulationens tilfældighed.
  *
- * Grafikkilderne er delt: projektiler, miner, tønder, kasser og
- * eksplosionens 12 billeder kommer fra Kenney-sprites (assets.js), mens
- * gravsten, faldskærm, dynamit og gnist stadig tegnes i kunst.js — dem har
- * pakken ikke. En eksplosion er Kenneys billedserie skaleret til raderius,
- * plus jordstumper, gnister og et tegneserieord, når braget er stort nok.
+ * Genstandene på banen (mine, printer, opdatering, telefon, piller, kasser,
+ * faldskærm, gravsten) og eksplosionen er tegneseriemodeller i kundernes
+ * stil med 20 frames hver (objekt_view.js). Projektilerne er de flade
+ * tegninger fra kunst.js. En eksplosion er modellens 20 frames skaleret til
+ * radius, plus jordstumper, gnister og et tegneserieord ved store brag.
  *
  * Våbeneffekterne (stråler, KLASK!, skjold, teleport, fakturaregn, borestøv,
  * virussky) er metoder på lavFx-objektet, fordi de deler partikelbufferen og
@@ -27,7 +27,9 @@ import {
   lavGenstandAtlas, GEN_NAVNE, GEN_KOL, lavEksplosionAtlas, EKS_NAVNE, KANT, TEGNE_PUNKTER,
 } from './kunst.js';
 import { hent } from './assets.js';
-import { objektMesh, saetFrame, eksplosionFrame } from './objekt_view.js';
+import {
+  objektMesh, objektMaal, objektIndhold, OBJEKT_FOD, saetFrame, animer, eksplosionFrame,
+} from './objekt_view.js';
 import { lavHaandvaaben, vaabenMaal } from './kunst.js';
 import { TYNGDE as SIM_TYNGDE, VIND_ACC as SIM_VIND_ACC } from '../sim/physics.js';
 import { VAABEN } from '../sim/weapons.js';
@@ -375,15 +377,13 @@ function celleGeo(navne, kol, raekker, navn, str, cache) {
 
 const GEN_RAEK = Math.ceil(GEN_NAVNE.length / GEN_KOL);
 
-/* Cellestørrelse i wu og hvor langt under centrum tingens fod sidder
-   (brøkdel af cellen). Tegningerne fylder ikke hele cellen. */
+/* Cellestørrelse i wu. Tegningerne fylder ikke hele cellen. (Genstandene på
+   banen er tegneseriemodeller nu — se OBJ og objekt_view.js.) */
 const GEN_STR = {
   gren: 40, agern: 38, kogle: 44, 'frø': 34, dynamit: 44, mine: 44, mine_lys: 44,
   stamme: 60, toende: 44, sten: 38, kasse_vaaben: 54, kasse_helbred: 54, kasse_hjaelp: 54,
   faldskaerm: 60, gravsten: 42, gnist: 18, roer: 46, boesse: 44,
 };
-const FOD = { dynamit: 22 / 96, mine: 16 / 96, mine_lys: 16 / 96, toende: 28 / 96, gravsten: 30 / 96,
-              kasse_vaaben: 28 / 96, kasse_helbred: 28 / 96, kasse_hjaelp: 28 / 96 };
 
 function genGeoFor(navn) {
   if (!genTex) genTex = atlasTex(lavGenstandAtlas());
@@ -1042,6 +1042,14 @@ function ringTex() {
  * på jorden altid viser den rigtige afstand. */
 const MINE_RADIUS = VAABEN.baevermine?.placeret?.naerhed ?? 42;
 const MINE_BREDDE = 27;          // mailens bredde i wu — tre gange den gamle, så den ses
+/* Genstandenes tegneseriemodeller (objekt_view.js) og deres bredde i wu. */
+const OBJ = {
+  telefon: ['bordtelefon', 30], piller: ['pilleglas', 17], vaaben: ['vaerktoejskasse', 34],
+  hjaelp: ['svaevepille', 22], skaerm: ['faldskaerm', 56], printer: ['printer', 34],
+  opdatering: ['tvangsopdatering', 26], gravsten: ['gravsten', 24],
+};
+/* Phishing-minens "!"-mærke i modellens celle (px, 128-cellen): her sidder lampen. */
+const MINE_MAERKE = [97, 76];
 /** Tick til minen er armeret: fra deltaet (armerRest), ellers regnet fra
  *  snapshottets felter som i simulationen. 0 = armeret (også banens miner). */
 const armerRest = (p) => p.armerRest ?? simArmerRest(p);
@@ -1052,20 +1060,9 @@ export function lavGenstandView(scene) {
   gruppe.position.z = Z.genstande;
   scene.add(gruppe);
   const brugt = new Map();
-  const atlasMat = genMat();
-  atlasMat.userData.delt = true;             // deles af alle genstande; frigives i fjern()
-
-  const atlasQuad = (navn) => {
-    const m = new Mesh(genGeoFor(navn), atlasMat);
-    m.renderOrder = Z.genstande;
-    return m;
-  };
-
   function lavTelefon() {
     const g = new Group();
-    const m = haandQuad('bordtelefon', Z.genstande, true);
-    m.material.map = klisterTex('bordtelefon');
-    m.scale.setScalar(1.7);
+    const m = objektMesh(...OBJ.telefon, Z.genstande);
     g.add(m); g.userData.krop = m;
     // En gul ring på jorden og "RING!" over den, mens den ringer.
     const ring = new Mesh(new PlaneGeometry(56, 15),
@@ -1082,9 +1079,9 @@ export function lavGenstandView(scene) {
 
   function lavPiller() {
     const g = new Group();
-    const glas = billedQuad('kasseHelbred', 15, Z.genstande);
-    if (glas) { glas.position.y = glas.userData.h / 2; g.add(glas); g.userData.krop = glas; }
-    g.userData.glasH = glas ? glas.userData.h : 30;
+    const glas = objektMesh(...OBJ.piller, Z.genstande);
+    g.add(glas); g.userData.krop = glas;
+    g.userData.glasH = objektMaal(...OBJ.piller).hoejde;
     // En grøn ring og "+50", så man kan se, hvad glasset gør.
     const ring = new Mesh(new PlaneGeometry(50, 13),
       new MeshBasicMaterial({ map: ringTex(), transparent: true, depthTest: false, depthWrite: false, color: 0x7DDC6A }));
@@ -1102,15 +1099,15 @@ export function lavGenstandView(scene) {
     if (slags === 'telefon') return lavTelefon();
     if (slags === 'helbred') return lavPiller();
     const g = new Group();
-    const navn = slags === 'helbred' ? 'kasseHelbred' : slags === 'hjaelp' ? 'kasseHjaelp' : 'kasseVaaben';
-    // Bredderne følger props'enes form: rygsækken er bred, glas og kapsel høje.
-    const bredde = { kasseVaaben: 32, kasseHelbred: 16, kasseHjaelp: 14 }[navn];
-    const kasse = billedQuad(navn, bredde, Z.genstande);
-    if (kasse) { kasse.position.y = kasse.userData.h / 2; g.add(kasse); }
-    const skaerm = atlasQuad('faldskaerm');           // faldskærmen tegnes stadig selv
-    skaerm.position.y = 52;
+    // Supportpakken er klinikkens værktøjskasse; svævepillen har små vinger.
+    const [navn, bredde] = slags === 'hjaelp' ? OBJ.hjaelp : OBJ.vaaben;
+    const kasse = objektMesh(navn, bredde, Z.genstande);
+    g.add(kasse);
+    // Faldskærmens snore samles lige over kassen.
+    const skaerm = objektMesh(...OBJ.skaerm, Z.genstande - 0.2);
+    skaerm.position.y = objektMaal(navn, bredde).top - 2;
     g.add(skaerm);
-    g.userData.skaerm = skaerm;
+    Object.assign(g.userData, { krop: kasse, skaerm, landetT: null });
     return g;
   }
 
@@ -1118,22 +1115,19 @@ export function lavGenstandView(scene) {
     // Phishing-minen: en stor, uskyldig mail. Mens den armeres, blinker den
     // i takt med nedtællingen; armeret lyser den rødt og konstant.
     const g = new Group();
-    const mo = vaabenMaal('mail');
-    const sk = MINE_BREDDE / Math.max(1e-3, mo.indholdB);
-    const hoejde = mo.indholdH * sk;
-    const s0 = mo.bredde / 256;                   // wu pr. lærredspixel før skalering
+    const mo = objektMaal('phishing_mine', MINE_BREDDE);
+    const hoejde = mo.hoejde;
     const gloed = gloedQuad(0xFF4A2C, Z.genstande - 0.5);
     gloed.scale.set(MINE_BREDDE * 2.6, hoejde * 2.5, 1);
     gloed.position.set(0, hoejde * 0.5, 0);
     g.add(gloed);
-    const m = haandQuad('mail', Z.genstande, true);
-    m.material.map = klisterTex('mail');
-    m.scale.setScalar(sk);
+    const m = objektMesh('phishing_mine', MINE_BREDDE, Z.genstande);
     g.add(m);
-    // Lampen over udråbstegnet i mail_alarm (r 20 px om (88, 44) på lærredet).
+    // Lampen over mailens røde "!"-mærke (MINE_MAERKE i modellens celle).
     const lampe = gloedQuad(0xFF6A4A, Z.genstande + 0.5, false);
-    lampe.position.set(((88 - 128) * s0 - mo.midtX) * sk, ((64 - 44) * s0 - mo.bund) * sk, 0.1);
-    lampe.scale.setScalar(20 * s0 * sk * 4.2);
+    const [x0, , x1] = objektIndhold('phishing_mine');
+    lampe.position.set((MINE_MAERKE[0] - (x0 + x1) / 2) * mo.s, (OBJEKT_FOD - MINE_MAERKE[1]) * mo.s, 0.1);
+    lampe.scale.setScalar(26 * mo.s);
     g.add(lampe);
     // Ringen viser, hvor tæt man kan komme, før den går af.
     const ring = new Mesh(new PlaneGeometry(MINE_RADIUS * 2.1, MINE_RADIUS * 0.55),
@@ -1158,30 +1152,21 @@ export function lavGenstandView(scene) {
     g.userData.navn = sprite;
     if (sprite === 'toende') {
       // Printeren: sprænges den (eller rammes den direkte), går den af med et brag.
-      const m = haandQuad('printer', Z.genstande, true);
-      m.material.map = klisterTex('printer');
-      m.scale.setScalar(1.25);
+      const m = objektMesh(...OBJ.printer, Z.genstande);
       g.add(m); g.userData.krop = m; g.userData.printer = true;
     } else {
-      // Ukendt udlagt ting: den blå opdateringsboks med tændt lunte.
-      const m = haandQuad('opdatering', Z.genstande, true);
-      g.add(m);
-      // Gnisten sidder for enden af lunten (øverst til højre på tegningen).
-      const mo = vaabenMaal('opdatering');
-      const gnist = atlasQuad('gnist');
-      gnist.scale.set(0.6, 0.6, 1);
-      gnist.position.set(mo.indholdB * 0.35, mo.indholdH * 0.98, 0.1);
-      g.add(gnist);
-      g.userData.gnist = gnist;
+      // Ukendt udlagt ting: den blå opdateringsboks med tændt lunte (gnisten
+      // er en del af modellen).
+      const m = objektMesh(...OBJ.opdatering, Z.genstande);
+      g.add(m); g.userData.krop = m; g.userData.opdatering = true;
     }
     return g;
   }
 
   function lavGravsten() {
     const g = new Group();
-    const m = atlasQuad('gravsten');
-    m.position.y = GEN_STR.gravsten * FOD.gravsten;
-    g.add(m);
+    const m = objektMesh(...OBJ.gravsten, Z.genstande);
+    g.add(m); g.userData.krop = m;
     return g;
   }
 
@@ -1193,8 +1178,9 @@ export function lavGenstandView(scene) {
     // Blinket tænder i det øjeblik, sekundet skifter — samme takt som bippet.
     const blink = !armeret && ((rest - 1) % 60) >= 45;
     const taendt = armeret || blink;
-    const tex = klisterTex(taendt ? 'mail_alarm' : 'mail');
-    if (tex && u.krop.material.map !== tex) { u.krop.material.map = tex; u.krop.material.needsUpdate = true; }
+    // Armeret: mærket lyser stille (idle_2). Blinket: mærket lyser og mailen
+    // ryster (aktiv_0). Ellers ligger den uskyldigt i tomgang.
+    saetFrame(u.krop, armeret ? 'idle_2' : blink ? 'aktiv_0' : 'idle_0');
     u.gloed.material.opacity = armeret ? 0.8 : blink ? 0.75 : 0.12;
     u.lampe.visible = taendt;
     u.ring.material.opacity = armeret ? 0.85 : 0.2 + (blink ? 0.45 : 0);
@@ -1232,23 +1218,37 @@ export function lavGenstandView(scene) {
           const u = m.userData, puls = 0.5 + 0.5 * Math.sin(t * 3 + k.id);
           u.skilt.position.set(0, u.glasH + 12 + Math.sin(t * 2.4 + k.id) * 3, 0);
           u.ring.material.opacity = 0.35 + 0.45 * puls;
+          animer(u.krop, 'idle', t + k.id * 0.37);
           continue;
         }
         if (m.userData.telefon) {
           // Ringer den, hopper den på gaflen, og "RING!" popper op.
           const ringer = telefonRinger(k.id, t);
           const u = m.userData;
-          u.krop.rotation.z = ringer ? Math.sin(t * 46) * 0.09 : 0;
-          u.krop.position.y = ringer ? Math.abs(Math.sin(t * 23)) * 1.6 : 0;
+          animer(u.krop, ringer ? 'aktiv' : 'idle', t + k.id * 0.37, ringer ? 1.6 : 1);
           u.skilt.visible = ringer;
           u.skilt.position.set(0, 42 + Math.sin(t * 6) * 2, 0);
           u.skilt.scale.setScalar(1 + 0.12 * Math.abs(Math.sin(t * 12)));
           u.ring.material.opacity = ringer ? 0.55 + 0.45 * Math.abs(Math.sin(t * 8)) : 0.25;
           continue;
         }
-        const s = m.userData.skaerm;
-        s.visible = !k.landet;
-        m.rotation.z = k.landet ? 0 : Math.sin(t * 1.6 + k.id) * 0.12;
+        // I luften: kassen i fald, skærmen svajer. Ved landingen squasher
+        // kassen, og skærmen klapper sammen, før den forsvinder.
+        const u = m.userData;
+        if (!k.landet) {
+          u.landetT = null;
+          animer(u.krop, 'fald', t + k.id);
+          animer(u.skaerm, 'idle', t + k.id);
+          u.skaerm.visible = true;
+          m.rotation.z = Math.sin(t * 1.6 + k.id) * 0.06;
+        } else {
+          if (u.landetT === null) u.landetT = t;
+          const efter = t - u.landetT;
+          animer(u.krop, efter < 0.25 ? 'land' : 'idle', efter < 0.25 ? efter : t + k.id);
+          u.skaerm.visible = efter < 0.45;
+          if (u.skaerm.visible) animer(u.skaerm, 'land', efter, 0.7);
+          m.rotation.z = 0;
+        }
       }
       for (const p of placerede) {
         set.add('p' + p.id);
@@ -1258,18 +1258,10 @@ export function lavGenstandView(scene) {
         if (m.userData.mine) { opdaterMine(m, p, t); continue; }
         if (m.userData.printer) {
           // PAPIRSTOP-lampen blinker, og printeren ryster en anelse.
-          const tændt = Math.floor(t * 2 + p.id) % 2 === 1;
-          const tex = klisterTex(tændt ? 'printer_alarm' : 'printer');
-          if (tex && m.userData.krop.material.map !== tex) {
-            m.userData.krop.material.map = tex;
-            m.userData.krop.material.needsUpdate = true;
-          }
-          m.userData.krop.rotation.z = tændt ? Math.sin(t * 40) * 0.02 : 0;
+          animer(m.userData.krop, 'aktiv', t + p.id * 0.5, 0.5);
         }
-        if (m.userData.gnist) {
-          const f = 0.4 + Math.random() * 0.35;   // flakker, i gnistens egen størrelse
-          m.userData.gnist.scale.set(f, f, 1);
-        }
+        // Lunten gnistrer: tomgangens fire gnist-frames i højt tempo.
+        if (m.userData.opdatering) animer(m.userData.krop, 'idle', t + p.id, 3);
       }
       for (const g of gravsten) {
         set.add('g' + g.id);
@@ -1294,6 +1286,7 @@ export function lavGenstandView(scene) {
         const a = Math.min(1, (t - u.foedt) / 0.35);
         const sk = a < 1 ? Math.sin(a * Math.PI * 0.5) * (1 + 0.25 * Math.sin(a * Math.PI)) : 1;
         m.scale.set(1, Math.max(0.01, sk), 1);
+        animer(u.krop, 'idle', t + g.id);
       }
       for (const [id, m] of brugt) {
         if (!set.has(id)) { smid(m); brugt.delete(id); }
@@ -1303,7 +1296,6 @@ export function lavGenstandView(scene) {
       for (const [, m] of brugt) smid(m);
       brugt.clear();
       scene.remove(gruppe);
-      atlasMat.dispose();
     },
   };
 }

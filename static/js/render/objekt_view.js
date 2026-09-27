@@ -31,6 +31,9 @@ const FORLOEB = {
 };
 
 export const OBJEKT_NAVNE = Object.keys(RIG.modeller);
+/** Jordlinjen i cellen (px) og tegningens udstrækning i tomgang [x0, y0, x1, y1]. */
+export const OBJEKT_FOD = RIG.fod;
+export const objektIndhold = (navn) => RIG.modeller[navn].indhold;
 export const objekterKlar = () => OBJEKT_NAVNE.every((n) => hent(`obj_${n}`));
 
 const texCache = new Map();
