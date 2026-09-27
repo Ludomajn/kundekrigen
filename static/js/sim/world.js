@@ -160,6 +160,7 @@ class Verden {
    * øje med, hvor man træder.
    */
   _udstyrBanen() {
+    if (this.terraen.fort) { this._udstyrForter(); return; }
     const pladser = this._udstyrsPladser();
     if (pladser.length < 6) return;
 
@@ -197,6 +198,51 @@ class Verden {
 
     for (let n = 0; n < antalTelefoner && i < ledige.length; n++) this._lavTelefon(naeste());
     for (let n = 0; n < antalPiller && i < ledige.length; n++) this._lavPiller(naeste());
+  }
+
+  /** Fortbanen: hver borg får det samme udstyr — lige mange miner, printere,
+   *  telefoner og piller — på de samme pladser, spejlet. Borge af samme form
+   *  har deres pladser i samme (spejlede) rækkefølge (terrain_gen.fortPlan),
+   *  så én blanding pr. form giver dem alle det samme. Printerne (stort
+   *  krater) står kun på pladser langt fra kunderne. */
+  _udstyrForter() {
+    const { forter } = this.terraen.fort;
+    const H = forter.length;
+    const antalMiner = 3 + Math.floor(this.rngSim() * 4) + Math.round(this.terraen.w / 2000);
+    const antalToender = 1 + Math.floor(this.rngSim() * 3);
+    const miner = Math.max(1, Math.round(antalMiner / H));
+    const toender = Math.max(1, Math.round(antalToender / H));
+    const orden = new Map();
+    for (const f of forter) if (!orden.has(f.form)) orden.set(f.form, this.rngSim.bland(f.udstyr.map((_, j) => j)));
+    const lister = forter.map((f) => orden.get(f.form).map((j) => f.udstyr[j])
+      .filter((p) => this.baevere.every((b) => Math.hypot(b.x - p.x, b.y - p.y) >= 120)));
+    // Lige mange af hver slags på hver borg: højst hvad den mindste har plads til.
+    const nT = Math.min(toender, ...lister.map((l) => l.filter((p) => p.langt).length));
+    const valgte = lister.map((l) => {
+      const printere = l.filter((p) => p.langt).slice(0, nT);
+      return { printere, rest: l.filter((p) => !printere.includes(p)) };
+    });
+    const nRest = Math.min(...valgte.map((q) => q.rest.length));
+    const nM = Math.min(miner, nRest), nTlf = nRest > nM ? 1 : 0, nPil = nRest > nM + 1 ? 1 : 0;
+    for (const { printere, rest } of valgte) {
+      for (const p of printere) {
+        this.placerede.push(E.lavPlaceret(this.nytId(), {
+          x: p.x, y: p.y + 2, lunte: 0, naerhed: 0, armering: 0,
+          detonation: { radius: 96, skade: 62, knockback: 380, carve: true },
+          ejer: null, ejerHold: null, sprite: 'toende',
+        }));
+      }
+      for (let n = 0; n < nM; n++) {
+        const p = rest[n];
+        this.placerede.push(E.lavPlaceret(this.nytId(), {
+          x: p.x, y: p.y + 2, lunte: 0, naerhed: VAABEN.baevermine.placeret.naerhed, armering: 0,
+          detonation: { radius: 52, skade: 42, knockback: 240, carve: true },
+          ejer: null, ejerHold: null, sprite: 'mine',
+        }));
+      }
+      if (nTlf) this._lavTelefon(rest[nM]);
+      if (nPil) this._lavPiller(rest[nM + 1]);
+    }
   }
 
   /** Udsæt bævere. Hold fordeles INTERLEAVED, så de starter blandet ud over
@@ -237,7 +283,8 @@ class Verden {
 
   /** Fortbanen: klinik i står på fort i, én kunde pr. etage nedefra (de
    *  ekstra kunder side om side på de nederste etager, se terrain_gen.fortPlan).
-   *  Kunderne vender ind mod banens midte. */
+   *  Kunderne vender ud ad deres skydeskår, mod fjenden (p.retning; i den
+   *  dobbeltsidede midterborg er det forskelligt fra etage til etage). */
   _udsaetPaaFort() {
     const { forter } = this.terraen.fort;
     const naeste = new Map();                // hold -> næste ledige plads på fortet
@@ -249,12 +296,12 @@ class Verden {
       if (!p) { reserve.push(b); continue; }
       naeste.set(b.hold, j + 1);
       b.x = p.x; b.y = p.y;
-      b.retning = f.cx <= this.terraen.w / 2 ? 1 : -1;
+      b.retning = p.retning || f.retning || 1;
       b.paaJorden = true;
       F.frigoer(this.terraen, b);
     }
     // Flere kunder end planen har plads til (kan ikke ske med et layout fra
-    // holdene): på land uden for fortene, som på de andre baner.
+    // holdene): på en af udstyrspladserne på borgene.
     const pladser = this._udstyrsPladser();
     reserve.forEach((b, i) => {
       const p = pladser[(i * 7) % Math.max(1, pladser.length)] || { x: 200 + i * 120, y: this.terraen.h * 0.7 };
@@ -265,16 +312,15 @@ class Verden {
     this.tur.tilstandTick = 0;
   }
 
-  /** Steder til miner, printere, telefoner, piller og kasser: startpladserne
-   *  minus fortene (tårn, gård og det stykke af volden, man lander på, når
-   *  man hopper ud ad et vindue — ~190-280 wu fra midten, plus minens 42 wu).
-   *  Er der ingen forter, er det bare findStartpladser — de andre baner får
-   *  præcis de samme pladser som før. */
+  /** Steder til miner, printere, telefoner, piller og kasser. På fortbanen
+   *  er der intet land: pladserne ligger PÅ borgene — hallernes gulve, taget
+   *  og keepens top, aldrig i kundernes rum og mindst 120 wu fra en
+   *  startplads (terrain_gen.fortIndhold). Ellers er det findStartpladser —
+   *  de andre baner får præcis de samme pladser som før. */
   _udstyrsPladser() {
-    const pladser = findStartpladser(this.terraen, this.vandNiveau);
     const fort = this.terraen.fort;
-    if (!fort) return pladser;
-    return pladser.filter((p) => fort.forter.every((f) => Math.abs(p.x - f.cx) > f.fodHalv + 160));
+    if (fort) return fort.forter.flatMap((f) => f.udstyr);
+    return findStartpladser(this.terraen, this.vandNiveau);
   }
 
   // ------------------------------------------------------------ opslag
@@ -899,10 +945,18 @@ class Verden {
     const vaabenkasser = this.kasser.filter((k) => k.slags === 'vaaben' && !k.doed).length;
     if (vaabenkasser >= VAABENKASSE_MAKS) return;
     // Over land (en startplads), et stykke over jorden; den daler i
-    // faldskærm (physics.skridtKasse) og driver lidt med vinden.
+    // faldskærm (physics.skridtKasse) og driver lidt med vinden. På
+    // fortbanen er udstyrspladsen måske inde i borgen, så kassen slippes
+    // over en af borgenes toppe (taget eller et tårn), man kan komme op på.
     const indhold = tilfaeldigtKassevaaben(this.rngSim);
-    const y = Math.min(this.terraen.h - 40, p.y + KASSE_FALDHOEJDE);
-    const k = E.lavKasse(this.nytId(), { slags: 'vaaben', indhold, x: p.x, y });
+    let kx = p.x, ky = p.y;
+    if (this.terraen.fort) {
+      const toppe = this.terraen.fort.forter.flatMap((f) => f.kasser);
+      kx = toppe[Math.floor(this.rngSim() * toppe.length)] ?? p.x;
+      ky = Math.max(0, this.terraen.overflade(kx));
+    }
+    const y = Math.min(this.terraen.h - 40, ky + KASSE_FALDHOEJDE);
+    const k = E.lavKasse(this.nytId(), { slags: 'vaaben', indhold, x: kx, y });
     this.kasser.push(k);
     h.push({ navn: 'kasseFalder', id: k.id, x: k.x, y: k.y, slags: k.slags });
   }
@@ -946,8 +1000,11 @@ class Verden {
         break;
       }
       case 'viderestil': {
-        const pladser = findStartpladser(this.terraen, this.vandNiveau)
-          .filter((p) => Math.abs(p.x - b.x) > 400);
+        // På fortbanen: et sted på kundens egen borg, man kan gå fra (en
+        // hal, taget eller keepens top) — aldrig ind i fjendens borg.
+        const egne = this.terraen.fort ? (this.terraen.fort.forter[b.hold]?.udstyr || []) : null;
+        const pladser = (egne || findStartpladser(this.terraen, this.vandNiveau))
+          .filter((p) => Math.abs(p.x - b.x) > (egne ? 200 : 400));
         if (!pladser.length) break;
         const p = pladser[Math.floor(this.rngSim() * pladser.length)];
         // Borer kunden, slutter boret FØR flytningen — ellers gravede næste

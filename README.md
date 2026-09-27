@@ -179,14 +179,24 @@ kaster pakkens mursten.
 - **Destruktibelt terræn** — pixelmaske på 5120×1792, procedurelt genereret i
   fire banetyper (fort, åbent land, hulesystem, øer). Højdekurven terrasseres og
   glattes, så banerne har store flader at kæmpe på frem for konstante skrænter.
-- **Fortet er standardbanen.** Hver klinik står på sit eget tårn af murværk
-  (`MUR`: destruktibelt som jord, tegnet som mursten) med én etage pr. kunde —
-  2v2 giver to etager, 3v3 tre, højst fire (de ekstra kunder står side om side
-  nederst). Etagerne har brystning og vindue til begge sider, en lem skiftevis i
-  venstre og højre side (man kan falde én etage ned uden skade), og taget er åbent
-  med en tinde i hver ende. Mellem fortene ligger lavt land med kanaler.
-  Layoutet (antal klinikker, kunder pr. klinik) følger med i snapshottet, så
-  gæsterne bygger præcis det samme fort (`terrain_gen.fortPlan`).
+- **Fortet er standardbanen** — som Worms' fort-tilstand: hver klinik har sin
+  egen store, mest massive borg af murværk (`MUR`: destruktibelt som jord) over
+  åbent hav. Der er intet land imellem, og havet er så bredt, at ingen kan
+  hoppe over; falder man i, drukner man. Borgen har én etage pr. kunde — 2v2
+  giver to, 3v3 tre, højst fire (de ekstra kunder står side om side nederst) —
+  med kundernes rum i det høje fortårn mod fjenden: en rund bue og et
+  skydeskår over en brystning på 48 wu, så et lige skud fra fjendens
+  tilsvarende etage aldrig når kunden, mens man selv kan skyde ud i en bue.
+  Etagerne er forbundet af trappeløb, der går som tunneler i murværket op mod
+  bagsiden (oppe hopper man over hullet i dækket ud mod facaden); fra taget
+  når man udkigskammeret i fortårnet og keepens top. Siluetten trappes ned
+  væk fra fjenden og varierer med frøet: keep med kronetårn, porttårn,
+  vagttårn, tinder, hvælvede haller og gange med vinduer, buer man ser himlen
+  igennem, havbuer under bagdelen, anneks, altaner og gesimser. To klinikker
+  står facade mod facade, fire parvis, og med tre er midterborgen
+  dobbeltsidet. Borgene er spejlede og ens, også udstyret på dem. Layoutet
+  (antal klinikker, kunder pr. klinik) følger med i snapshottet, så gæsterne
+  bygger præcis de samme borge (`terrain_gen.fortPlan`).
 - **Hav i bunden.** Vandlinjen ligger på 300 wu fra kampens start, og et antal
   brede kanaler skæres GARANTERET ned gennem den, så banen deles i landmasser
   med rigtigt vand imellem. Falder man i, drukner man. Støjbaserede kanaler
