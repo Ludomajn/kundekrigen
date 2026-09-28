@@ -15,6 +15,7 @@
 import { lavRng } from '../core/rng.js';
 import { HZ, DT } from '../core/tick.js';
 import { genererSpilbar, findStartpladser, VAND_NIVEAU } from './terrain_gen.js';
+import { PYNT, PYNT_STOR } from './baneregler.js';
 import { Terraen } from './terrain.js';
 import * as E from './entities.js';
 import * as F from './physics.js';
@@ -38,6 +39,10 @@ const PILLER_HP = 50, PILLER_LOFT = 150, PILLER_MAKS = 2;
 /* Forsyningskasser: hvor højt over jorden de slippes (de daler i faldskærm
  * med 70 wu/s, physics.skridtKasse), og hvor mange der højst ligger på banen. */
 const KASSE_FALDHOEJDE = 360, VAABENKASSE_MAKS = 4;
+
+/* Så meget luft skal der mindst være under et loft, før mursten og
+ * luftangreb dukker op dér (world.nedfaldY) — ellers et stykke længere nede. */
+const NEDFALD_LUFT = 40;
 import { tagSnapshot, tagDelta } from './snapshot.js';
 
 export const T = TU.T;
@@ -155,11 +160,29 @@ class Verden {
     // Layoutet følger med i snapshottet, så spejlet og gæsterne bygger det samme.
     this.layout = lavLayout(this.hold.length, this.baevere);
     const res = genererSpilbar(this.froe, this.banetype, Math.max(2, this.baevere.length), this.layout);
+    this._saetBane(res);
+    // Havet er en del af banen fra start, ikke først i pludselig død.
+    this.vandNiveau = res.terraen.vandNiveau ?? VAND_NIVEAU;
+  }
+
+  /** Den genererede bane. baneKilde er det frø og den type, banen blev
+   *  bygget UD FRA — ikke froeBrugt, som genererSpilbar kan have afledt ved
+   *  et nyt forsøg. genskab sammenligner med den, så et snapshot ikke får
+   *  gæsten til at bygge banen om ved hvert turskift. */
+  _saetBane(res) {
     this.terraen = res.terraen;
     this.startpladser = res.pladser;
     this.froeBrugt = res.froe;
-    // Havet er en del af banen fra start, ikke først i pludselig død.
-    this.vandNiveau = res.terraen.vandNiveau ?? VAND_NIVEAU;
+    this.baneKilde = { froe: this.froe, type: this.banetype };
+  }
+
+  /** Står der en stor pynteting (busk, siv, pindebunke, bregne) lige ved p?
+   *  Så starter ingen kunde og står intet udstyr dér (baneregler.PYNT_STOR). */
+  _vedStorPynt(p) {
+    const pynt = this.terraen.pynt;
+    if (!pynt) return false;
+    for (const q of pynt) if (PYNT[q.navn]?.stor && Math.abs(q.x - p.x) < PYNT_STOR && Math.abs(q.y - p.y) < 40) return true;
+    return false;
   }
 
   /**
@@ -259,7 +282,10 @@ class Verden {
    *  banen i stedet for at klumpe sig hold for hold. */
   udsaet() {
     if (this.terraen.fort) { this._udsaetPaaFort(); return; }
-    const pladser = this.rngSim.bland(this.startpladser.slice());
+    // Aldrig under en stor pynteting (baneregler.placerPynt); findes der ikke
+    // andre, bruges de alligevel.
+    const fri = this.startpladser.filter((p) => !this._vedStorPynt(p));
+    const pladser = this.rngSim.bland((fri.length >= this.baevere.length * 2 ? fri : this.startpladser).slice());
     const brugte = [];
     const perHold = new Map();
     for (const b of this.baevere) {
@@ -330,7 +356,9 @@ class Verden {
   _udstyrsPladser() {
     const fort = this.terraen.fort;
     if (fort) return fort.forter.flatMap((f) => f.udstyr);
-    return findStartpladser(this.terraen, this.vandNiveau);
+    const alle = findStartpladser(this.terraen, this.vandNiveau);
+    const fri = alle.filter((p) => !this._vedStorPynt(p));
+    return fri.length >= 6 ? fri : alle;
   }
 
   // ------------------------------------------------------------ opslag
@@ -1026,7 +1054,7 @@ class Verden {
    *  helst ikke over de x'er i undgaa (flere kasser på én gang). */
   _slipVaabenkasse(p, h, undgaa = null) {
     const indhold = tilfaeldigtKassevaaben(this.rngSim);
-    let kx = p.x, ky = p.y;
+    let kx = p.x, ky = p.y, stykke = null;
     if (this.terraen.fort) {
       let toppe = this.terraen.fort.forter.flatMap((f) => f.kasser);
       if (undgaa?.length) {
@@ -1035,9 +1063,17 @@ class Verden {
       }
       kx = toppe[Math.floor(this.rngSim() * toppe.length)] ?? p.x;
       ky = Math.max(0, this.terraen.overflade(kx));
+      // Vinden må ikke føre kassen op på et tårn, man ikke kan komme op på:
+      // den driver kun over stykket (taget, keepens top, gangbroen), den
+      // blev sluppet over.
+      stykke = this.terraen.fort.forter.flatMap((f) => f.kasseSpand || []).find(([a, b]) => kx >= a && kx <= b) || null;
     }
-    const y = Math.min(this.terraen.h - 40, ky + KASSE_FALDHOEJDE);
-    const k = E.lavKasse(this.nytId(), { slags: 'vaaben', indhold, x: kx, y });
+    // Under et loft (grotten, et overhæng) slippes kassen under loftet, ikke
+    // inde i klippen over det.
+    let fald = KASSE_FALDHOEJDE;
+    for (let dy = 8; dy <= KASSE_FALDHOEJDE + 24; dy += 4) if (this.terraen.fast(kx, ky + dy)) { fald = Math.max(24, dy - 24); break; }
+    const y = Math.min(this.terraen.h - 40, ky + fald);
+    const k = E.lavKasse(this.nytId(), { slags: 'vaaben', indhold, x: kx, y, xMin: stykke?.[0], xMax: stykke?.[1] });
     this.kasser.push(k);
     h.push({ navn: 'kasseFalder', id: k.id, x: k.x, y: k.y, slags: k.slags });
     return k;
@@ -1101,21 +1137,55 @@ class Verden {
     h.push(e);
   }
 
-  /** Mursten fra loftet langs et bælte om midte. */
+  /** Mursten fra loftet langs et bælte om midte: fra himlen — eller, i
+   *  grotten, lige under klippeloftet (nedfaldY). */
   _stenskred(midte, spredning = 520, antal = 3 + Math.floor(this.rngSim() * 4)) {
     for (let i = 0; i < antal; i++) {
       this.forsinkede.push({
         tick: this.tick + i * 14,
-        lav: () => E.lavProjektil(this.nytId(), {
-          x: midte + (this.rngSim() - 0.5) * spredning,
-          y: this.terraen.h + 50,
-          vx: (this.rngSim() - 0.5) * 40, vy: -260,
-          r: 6, vindFaktor: 0.15, hop: 0, rammerBaevere: true,
-          detonation: { radius: 40, skade: 26, knockback: 150, carve: true },
-          ejer: null, ejerHold: null, sprite: 'sten', spor: null,
-        }),
+        lav: () => {
+          const id = this.nytId();
+          const x = midte + (this.rngSim() - 0.5) * spredning;
+          return E.lavProjektil(id, {
+            x, y: this.nedfaldY(x, 50) ?? this.terraen.h + 50,
+            vx: (this.rngSim() - 0.5) * 40, vy: -260,
+            r: 6, vindFaktor: 0.15, hop: 0, rammerBaevere: true,
+            detonation: { radius: 40, skade: 26, knockback: 150, carve: true },
+            ejer: null, ejerHold: null, sprite: 'sten', spor: null,
+          });
+        },
       });
     }
+  }
+
+  /** Hvor noget, der falder ned oppefra (stenskred, luftangreb), dukker op
+   *  over kolonnen x. Med himmel over kolonnen er det over banen (h + over).
+   *  Under et loft — grotten er klippe og grundfjeld helt op — er det lige
+   *  under loftet. Med fra (luftangrebets markør) er det loftet over punktet:
+   *  i hulrummet, punktet er i, eller det første over det. Ellers er det det
+   *  øverste stykke luft over vandet, der er højt nok (NEDFALD_LUFT) og ikke
+   *  en lukket lomme (t.lukket). null: kolonnen har ingen luft at falde i. */
+  nedfaldY(x, over, fra = null) {
+    const t = this.terraen, xi = Math.round(x);
+    if (!t.fast(xi, t.h - 1)) return t.h + over;
+    if (fra != null) {
+      let y = Math.max(this.vandNiveau + 1, Math.min(t.h - 2, Math.round(fra)));
+      while (y < t.h - 1 && t.fast(xi, y)) y++;
+      const bund = y;
+      while (y < t.h - 1 && !t.fast(xi, y)) y++;
+      if (y < t.h - 1 && y - bund >= 24) return y - 12;
+    }
+    const L = t.lukket;
+    let top = -1, lukket = false;
+    for (let y = t.h - 2; y > this.vandNiveau; y--) {
+      if (t.fast(xi, y)) { top = -1; lukket = false; continue; }
+      if (top < 0) top = y;
+      if (lukket || top - y < NEDFALD_LUFT) continue;
+      const yy = top - 12;
+      if (L && L.data[Math.min(L.fh - 1, yy >> 2) * L.fw + (xi >> 2)]) { lukket = true; continue; }
+      return yy;
+    }
+    return null;
   }
 
   /** Uvejr: vinden springer kraftigt, og vejret skifter. */
@@ -1199,15 +1269,15 @@ class Verden {
     // rigtige terræn, afspiller vi kun de ops vi mangler.
     // Fortets layout kommer med snapshottet (ældre snapshots: udledt af holdene).
     const layout = snap.layout || lavLayout(snap.antalHold, snap.baevere);
+    // Samme bane: bygget ud fra det samme frø og den samme type (baneKilde) —
+    // også når genererSpilbar måtte prøve et afledt frø (froeBrugt).
     const sammeBane = this.terraen && this.terraen.w === snap.terraen.w &&
-                      this.froeBrugt === snap.froe &&
+                      this.baneKilde && this.baneKilde.froe === snap.froe && this.baneKilde.type === snap.banetype &&
                       (this.banetype !== 'fort' || sammeLayout(this.layout, layout));
     this.layout = layout;
     if (!sammeBane) {
       const res = genererSpilbar(this.froe, this.banetype, Math.max(2, snap.baevere.length), this.layout);
-      this.terraen = res.terraen;
-      this.startpladser = res.pladser;
-      this.froeBrugt = res.froe;
+      this._saetBane(res);
       this.terraen.afspil(snap.terraen.ops);
     } else if (snap.terraen.ops.length !== this.terraen.ops.length) {
       const har = this.terraen.ops.length;
@@ -1215,9 +1285,7 @@ class Verden {
       if (snap.terraen.ops.length < har) {
         // Vi er foran serveren (kan ske efter et hul) — byg forfra.
         const res = genererSpilbar(this.froe, this.banetype, Math.max(2, snap.baevere.length), this.layout);
-        this.terraen = res.terraen;
-        this.startpladser = res.pladser;
-        this.froeBrugt = res.froe;
+        this._saetBane(res);
         this.terraen.afspil(snap.terraen.ops);
       } else if (mangler.length) {
         // Kun de nye ops — de tidligere er allerede stemplet i masken.

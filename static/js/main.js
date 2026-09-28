@@ -532,7 +532,16 @@ function byggVisning() {
   const projektiler = lavProjektilView(r.scene, fx);
   const genstande = lavGenstandView(r.scene);
   const sigte = lavSigte(r.scene);
-  const kamera = lavKamera(r, v.terraen);
+  // Et snapshot udskifter spejlets figurobjekter (og kan bygge terrænet om),
+  // så kameraet slår dem op igen hver frame i stedet for at holde på dem.
+  const kamera = lavKamera(r, v.terraen, {
+    figur(id) {
+      const bs = S.verden?.baevere;
+      if (bs) for (let i = 0; i < bs.length; i++) if (bs[i].id === id) return bs[i];
+      return null;
+    },
+    terraen: () => S.verden?.terraen,
+  });
   const debug = lavDebug(r.scene, v.terraen);
   const sorteHuller = lavSorteHuller(r.scene);
 
@@ -562,9 +571,9 @@ function koblHaendelser() {
   bus.ryd();
   bus.paa('eksplosion', (e) => {
     visning.fx.eksplosion(e.x, e.y, e.radius);
-    const k = r.kamera.position;
-    const afstand = Math.hypot(e.x - k.x, e.y - k.y);
-    visning.kamera.rystelse(Math.min(1, e.radius / 60), afstand);
+    // Kameraet: rystelse efter radius og afstand, et kort punch-in, og et
+    // spark ved de store brag (Datalæk-bomben).
+    visning.kamera.eksplosion(e.x, e.y, e.radius);
     // Én lyd pr. brag, med forrang, så affyringslyden ikke overdøver den:
     // brugerens egne eksplosioner, efter størrelsen, HVER gang et skud rammer
     // eller en bombe går af — varieret, aldrig samme to gange i træk. (Klynger
@@ -620,6 +629,8 @@ function koblHaendelser() {
       // først, så "Død" og jublen fra den, der fik ram på kunden (i kø).
       visning.baevere.get(e.baever)?.absorber();
       visning.sorteHuller.start(e.x, e.y + 22);
+      // Kameraet ser kort på den, der lægger på — til liget har smældet.
+      visning.kamera.kortFokus(e.x, e.y + 22);
       lyd.afspil('sort_hul', { vol: 1.4, vigtig: true });
       replik(b, 'doer', { vigtig: true, altid: true });
       lyd.stemme(SPEAKER.doed, { vigtig: true });
@@ -627,6 +638,7 @@ function koblHaendelser() {
   });
   bus.paa('drukner', (e) => {
     visning.fx.plask(e.x, e.y); lyd.afspil('plask');
+    visning.kamera.kortFokus(e.x, e.y, 1.4);
     replik(S.verden.baevere.find((x) => x.id === e.baever), 'doer', { vigtig: true, altid: true });
     lyd.stemme(SPEAKER.doed, { vigtig: true });
   });
@@ -637,9 +649,10 @@ function koblHaendelser() {
   bus.paa('turStart', (e) => {
     const b = S.verden.baevere.find((x) => x.id === (e.baever ?? S.verden.tur.baeverId));
     // Kameraet SKAL finde den nye hovedperson, også hvis man stod og
-    // panorerede frit rundt, da turen skiftede.
+    // panorerede frit rundt, da turen skiftede — med en etablering: en kort
+    // glidning, lidt ude, og en blød zoom ind på kunden.
     slutIntro();
-    if (b) visning.kamera.fokus(b);
+    if (b) visning.kamera.etabler(b);
     const mit = b && erMin(b);
     // Kundernes replikker ved turskiftet. Et skud, der ikke ramte nogen,
     // bliver grinet ad først; så kommer turen.
@@ -817,6 +830,9 @@ function koblHaendelser() {
     const opdatering = e.vaaben === 'daemningsdynamit';
     if (e.traf) skudRamte();
     visning.fx.straale(e.x0, e.y0, e.x1, e.y1, { traf: e.traf, farve: opdatering ? 'blaa' : 'roed' });
+    // Scanneren rækker 1100 wu — længere end billedet: ram skytten og
+    // træfpunktet ind sammen et øjeblik (skytten bliver i billedet).
+    if (!opdatering) visning.kamera.rammeInd(e.x1, e.y1);
     if (e.traf && !opdatering) {
       visning.kamera.rystelse(0.35, 0);
       visning.fx.pop('BIP!', e.x1, e.y1 + 24, { farve: 'roed', str: 34 });
@@ -1035,9 +1051,13 @@ function foelgSkud(v, vi) {
     S.skudId = p.id;
   }
   if (p) {
-    S.nedslag = { x: p.x, y: p.y };
+    // Genbrugt punkt (ingen allokering pr. frame): kameraet holder over det
+    // efter nedslaget.
+    S.nedslag ||= { x: 0, y: 0 };
+    S.nedslag.x = p.x; S.nedslag.y = p.y;
     S.nedslagTid = 0;
-    vi.kamera.foelgSkud(p);
+    // Alt i luften følger med, så klynger og luftangreb rammes ind sammen.
+    vi.kamera.foelgSkud(p, v.projektiler);
     lyd.flyvelyd(p.sover ? null : { vx: p.vx, vy: p.vy, raket: RAKETTER.has(p.sprite), tumler: !RAKETTER.has(p.sprite) });
     return;
   }
@@ -1135,19 +1155,33 @@ function opdaterVisning(dt, tid) {
 
   // Kamerastyring
   // Under introen viser kameraet hele banen; ellers kun mens H holdes.
-  vi.kamera.kigPaaBanen(tast.nede('kig') || (S.introStartet && !S.introSlut));
-  const pan = 900 * dt;
+  const kigAktiv = tast.nede('kig') || (S.introStartet && !S.introSlut);
+  vi.kamera.kigPaaBanen(kigAktiv);
+  // Panoreringen følger zoomen: samme fart på skærmen ved alle zoomtrin.
+  // Ikke under oversigten: den står fast på banens midte, og med dens zoom
+  // (~6,5) ville en usynlig forskydning kaste billedet af sted bagefter.
+  const pan = 700 * dt * vi.kamera.zoom;
   let panX = 0, panY = 0;
   if (tast.nede('panVenstre')) panX -= pan;
   if (tast.nede('panHoejre')) panX += pan;
   if (tast.nede('panOp')) panY += pan;
   if (tast.nede('panNed')) panY -= pan;
-  if (panX || panY) { vi.kamera.friTilstand(true); vi.kamera.panorer(panX, panY); }
+  if ((panX || panY) && !kigAktiv) { vi.kamera.friTilstand(true); vi.kamera.panorer(panX, panY); }
 
   if (!S.introStartet && v.tur.tilstand === TIL.UDSAET) startIntro(vi);
   foelgSkud(v, vi);
   taelSkade(v, vi, performance.now());
   vi.sorteHuller.opdater(dt);
+  // Kameraets indramning (kun præsentation): hvad den aktive kunde sigter
+  // med — også for tilskuere, der ser vinklen i spejlet — og hvor hårdt der
+  // lades (kun kendt af den, der lader). Markøren og havet rammes ind.
+  const kAkt = v.aktivBaever();
+  const kSigte = kAkt && !kAkt.doed && !kAkt.graver && v.tur.tilstand === TIL.SPILLER_AKTIV
+    ? v.vaabenNu()?.sigte : null;
+  vi.kamera.saetSigte(kSigte === 'vinkel+kraft' || kSigte === 'vinkel' ? kSigte : null,
+                      S.oplader ? lokalKraft() : 0, kAkt ? kAkt.id : null);
+  vi.kamera.saetMarkoer(S.markoerTilstand, S.markoer.x, S.markoer.y);
+  vi.kamera.saetVand(v.vandNiveau);
   vi.kamera.opdater(dt);
   vi.parallaks.opdater(tid, v.vindNu());
   vi.fx.opdater(dt, r.renderer.domElement.height / (r.kamera.top - r.kamera.bottom));

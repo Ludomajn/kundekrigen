@@ -10,6 +10,16 @@
  *   2. EGENBEVÆGELSE — skyer driver, tågebånd siver, og trælagene svajer, hver
  *      med sin egen hastighed og fase. Det er dét, der gør, at baggrunden
  *      lever, når kameraet står stille, i stedet for at være et postkort.
+ *      Skyerne og tågen driver desuden MED VINDEN (en ophobet forskydning),
+ *      så himlen fortæller, hvilken vej det blæser. Slået fra ved
+ *      prefers-reduced-motion.
+ *
+ *   3. PERSPEKTIV VED ZOOM — kameraet er ortografisk (sigte og træfzoner skal
+ *      være eksakte), men baggrunden opfører sig, som om kameraet kørte frem
+ *      og tilbage: zoomer man ind, vokser de nære lag, mens de fjerne næsten
+ *      står stille på skærmen, og parallaksen bliver stærkere. Hvert lag
+ *      skaleres om kameraets midte med dybdeFaktor (camera.js). Ved det
+ *      udsnit, lagene er komponeret til (REF_UDSNIT_H), ser alt ud som før.
  *
  * Atmosfærisk perspektiv: fjerne lag trækkes mod himmelfarven og bliver
  * lysere og mindre mættede. Det er den enkeltting, der sælger afstand bedst.
@@ -25,6 +35,57 @@ import { CanvasTexture, RepeatWrapping, ClampToEdgeWrapping, LinearFilter,
          LinearMipmapLinearFilter } from '../three.js';
 import { hent } from './assets.js';
 import { VAND_NIVEAU } from '../sim/terrain_gen.js';
+import { dybdeFaktor, reduceretBevaegelse } from './camera.js';
+
+// Lagene er malet og placeret til et udsnit på 860 wu i højden (det gamle
+// standardudsyn). Ved det udsnit er perspektivskaleringen 1.
+export const REF_UDSNIT_H = 860;
+export const REF_LOEFT = 340;              // kameraets typiske højde over kystlinjen
+export const FLISE_FORHOLD = 1546 / 2048;  // fliserne er 2048 x 1546 px
+// Lagenes geometri i lokale wu: ud over banen til siderne og ned under flisen.
+export const LAG_UDSTRAEK = { side: 9000, under: 1600 };
+
+/**
+ * Lagene, fjernest først. bund er flisens underkant i forhold til
+ * kystlinjen, faktor lagets parallaksefaktor ved REF_UDSNIT_H, vind dets
+ * vinddrift (wu/s ved vind 1): de høje skyer langsomt, de lave og tågen
+ * hurtigere; bjergene og træerne står, hvor de står. bund-tallene er sat ud
+ * fra lagenes målte indhold (se README), så trælinjer og bakkekamme lander i
+ * læsbare højder over kystlinjen.
+ */
+export const LAG = [
+  { navn: 'skybanke', flise: 'px_skybanke', fliseB: 2600, bund: -693, faktor: 0.05, vind: 6, o: { alpha: 0.95, drift: 5 } },
+  { navn: 'fjernskyer', flise: 'px_fjernskyer', fliseB: 2400, bund: -1183, faktor: 0.07, vind: 8, o: { drift: 8 } },
+  { navn: 'fjernskyer1', flise: 'px_fjernskyer1', fliseB: 2200, bund: -760, faktor: 0.11, vind: 10, o: { drift: 12 } },
+  { navn: 'bakke2', flise: 'px_bakke2', fliseB: 2100, bund: -402, faktor: 0.16 },
+  { navn: 'taage_fjern', taage: { antal: 7, yMin: 150, yMax: 330, farve: 0xEAF3F7, alpha: 0.5 }, faktor: 0.2, vind: 9 },
+  { navn: 'bakke1', flise: 'px_bakke1', fliseB: 1800, bund: -340, faktor: 0.24 },
+  { navn: 'skyer', flise: 'px_skyer', fliseB: 1700, bund: -634, faktor: 0.30, vind: 16, o: { drift: 17 } },
+  { navn: 'buske', flise: 'px_buske', fliseB: 1250, bund: -190, faktor: 0.42 },
+  { navn: 'fjerntraeer', flise: 'px_fjerntraeer', fliseB: 1400, bund: -215, faktor: 0.55 },
+  { navn: 'taage_naer', taage: { antal: 5, yMin: 40, yMax: 170, farve: 0xF4F9FB, alpha: 0.45 }, faktor: 0.6, vind: 14 },
+  { navn: 'traeer', flise: 'px_traeer', fliseB: 1100, bund: -174, faktor: 0.68, o: { svaj: 2 } },
+];
+
+/**
+ * Et lags placering og skala (wu) for kameraet i (kx, ky) ved zoom zRel.
+ * g er lagets effektive parallaksefaktor, og laget skaleres g / faktor om
+ * kameraets midte. Ved zRel = 1 er g = faktor og skalaen 1, og placeringen
+ * er præcis den gamle:
+ *   x = kx * (1 - faktor) - off
+ *   y = forankring + (ky - ref) * (1 - faktor)
+ * — forankret i kystlinjen, så laget står stille i forhold til horisonten og
+ * kun følger kameraet med sin egen andel. Ren funktion; skriver i ud.
+ */
+export function lagPlacering(faktor, kx, ky, zRel, forankring, ref, ud = { x: 0, y: 0, s: 1 }) {
+  const g = dybdeFaktor(faktor, zRel);
+  const s = g / faktor;
+  const off = faktor < 0.35 ? 2200 : 1100;
+  ud.s = s;
+  ud.x = kx * (1 - g) - s * off;
+  ud.y = ky * (1 - g) + g * ref + s * (forankring - ref);
+  return ud;
+}
 
 const v3 = (hex) => ({ x: ((hex >> 16) & 255) / 255, y: ((hex >> 8) & 255) / 255, z: (hex & 255) / 255 });
 
@@ -55,12 +116,13 @@ void main(){
 /* ------------------------------------------------------------------ tåge */
 
 const TAAGE_VS = `
-uniform float uTid, uBredde;
+uniform float uTid, uBredde, uForskyd;
 attribute vec2 aBand;      // x: verdens-x, y: driftfart
 varying vec2 vUv;
 void main(){
   vUv = uv;
-  float x = mod(aBand.x + uTid * aBand.y, uBredde);
+  // uForskyd: vindens ophobede drift (wu), lagt oven i båndets egen fart.
+  float x = mod(aBand.x + uTid * aBand.y + uForskyd, uBredde);
   gl_Position = projectionMatrix * modelViewMatrix * vec4(position.x + x, position.y, 0.0, 1.0);
 }`;
 
@@ -89,7 +151,7 @@ uniform sampler2D uTex;
 uniform vec2 uFlise;          // flisens bredde og højde i wu
 uniform float uBund;          // flisens underkant i lagets lokale y
 uniform vec3 uDis;
-uniform float uDisM, uAlpha, uTid, uSvaj, uVind, uDrift;
+uniform float uDisM, uAlpha, uTid, uSvaj, uVind, uDrift, uForskyd;
 varying vec2 vLok;
 void main(){
   float v = (vLok.y - uBund) / uFlise.y;
@@ -98,7 +160,8 @@ void main(){
   v = max(v, 0.003);
   // Svaj: toppen af træerne bevæger sig, foden står stille.
   float svaj = (sin(uTid * 1.2 + vLok.x * 0.018) * 0.6 + uVind * 0.05) * uSvaj * v * v;
-  float u = (vLok.x + svaj + uTid * uDrift) / uFlise.x;
+  // uForskyd: vindens ophobede drift (wu, holdt inden for én flise).
+  float u = (vLok.x + svaj + uTid * uDrift + uForskyd) / uFlise.x;
   vec4 c = texture2D(uTex, vec2(u, v));
   if (c.a < 0.01) discard;
   gl_FragColor = vec4(mix(c.rgb, uDis, uDisM), c.a * uAlpha);
@@ -127,15 +190,19 @@ function taagebaand(bredde, antal, yMin, yMax, rng) {
 
 /* ------------------------------------------------------------------ lag */
 
-export function lavParallaks(scene, kamera, terraen, rng, vejr) {
+export function lavParallaks(scene, kamera, terraen, rng, vejr, opt = {}) {
   const B = terraen.w;
   const lag = [];
+  // Vinddriften er valgfri egenbevægelse: fra ved prefers-reduced-motion,
+  // medmindre kalderen bestemmer andet (opt.vinddrift).
+  const vinddrift = () => (typeof opt.vinddrift === 'boolean' ? opt.vinddrift : !reduceretBevaegelse());
+  let sidsteTid = -1;
 
   // Baggrunden forankres i KYSTLINJEN. Måltes lagene fra banens bund, ville
   // skoven stå under vandoverfladen — og et lag, der ikke er forankret i noget
   // i verden, glider synligt forkert, så snart kameraet bevæger sig lodret.
   const FORANKRING = terraen.vandNiveau ?? VAND_NIVEAU;
-  const REF = FORANKRING + 340;          // typisk kamerahøjde under spil
+  const REF = FORANKRING + REF_LOEFT;    // typisk kamerahøjde under spil
 
   // --- himmel (fastgjort til kameraet)
   const himmelMat = new ShaderMaterial({
@@ -152,20 +219,31 @@ export function lavParallaks(scene, kamera, terraen, rng, vejr) {
   himmel.frustumCulled = false;
   scene.add(himmel);
 
-  /** Byg ét lag og registrér det til opdatering. */
-  function tilfoej(navn, geo, mat, faktor, z, egendrift = 0) {
+  /** Byg ét lag og registrér det til opdatering.
+   *  vindDrift: hvor mange wu/s laget driver med vinden ved vind 1 (skyer og
+   *  tåge; 0 = står stille). */
+  function tilfoej(navn, geo, mat, faktor, z, vindDrift = 0) {
     const m = new Mesh(geo, mat);
     m.renderOrder = z; m.position.z = z;
     m.frustumCulled = false;
     scene.add(m);
-    lag.push({ navn, mesh: m, faktor, egendrift });
+    const u = mat.uniforms;
+    // De malede lag flytter teksturen (u = x + forskydning: modsat fortegn),
+    // tågen flytter selve båndene. Forskydningen holdes inden for én
+    // gentagelse, så shaderens float ikke mister præcision i en lang kamp.
+    const erMalet = !!u.uTex;
+    lag.push({
+      navn, mesh: m, faktor,
+      vindDrift, forskyd: 0, fortegn: erMalet ? -1 : 1,
+      periode: erMalet ? u.uFlise.value.x : u.uBredde.value,
+    });
     return m;
   }
 
   const taageMat = (hex, alpha) => new ShaderMaterial({
     vertexShader: TAAGE_VS, fragmentShader: TAAGE_FS,
     transparent: true, depthTest: true, depthWrite: false, side: DoubleSide,
-    uniforms: { uTid: { value: 0 }, uBredde: { value: B * 0.7 + 4000 },
+    uniforms: { uTid: { value: 0 }, uBredde: { value: B * 0.7 + 4000 }, uForskyd: { value: 0 },
                 uFarve: { value: v3(hex) }, uAlpha: { value: alpha } },
   });
 
@@ -187,7 +265,7 @@ export function lavParallaks(scene, kamera, terraen, rng, vejr) {
     tex.wrapS = RepeatWrapping; tex.wrapT = ClampToEdgeWrapping;
     tex.minFilter = LinearMipmapLinearFilter; tex.magFilter = LinearFilter;
     tex.generateMipmaps = true;
-    const x0 = -9000, x1 = B + 9000, y0 = bund - 1600, y1 = bund + fliseH;
+    const x0 = -LAG_UDSTRAEK.side, x1 = B + LAG_UDSTRAEK.side, y0 = bund - LAG_UDSTRAEK.under, y1 = bund + fliseH;
     const geo = new BufferGeometry();
     geo.setAttribute('position', new BufferAttribute(new Float32Array([
       x0, y0, 0, x1, y0, 0, x1, y1, 0, x0, y0, 0, x1, y1, 0, x0, y1, 0]), 3));
@@ -198,7 +276,7 @@ export function lavParallaks(scene, kamera, terraen, rng, vejr) {
         uTex: { value: tex }, uFlise: { value: { x: fliseB, y: fliseH } }, uBund: { value: bund },
         uDis: { value: v3(o.dis) }, uDisM: { value: o.disM }, uAlpha: { value: o.alpha },
         uTid: { value: 0 }, uSvaj: { value: o.svaj || 0 }, uVind: { value: 0 },
-        uDrift: { value: o.drift || 0 },
+        uDrift: { value: o.drift || 0 }, uForskyd: { value: 0 },
       },
     });
     mat.userData.tex = tex;
@@ -206,39 +284,26 @@ export function lavParallaks(scene, kamera, terraen, rng, vejr) {
     return [geo, mat];
   }
 
-  // Rækkefølge: fjernest først. Hvert lag er en flise fra parallaksepakken
-  // med sin egen faktor; skylagene DRIVER derudover vandret med egen fart.
-  // bund-tallene er sat ud fra lagenes målte indhold (se README), så
-  // trælinjer og bakkekamme lander i læsbare højder over kystlinjen.
+  // Hvert lag er en flise fra parallaksepakken med sin egen faktor (LAG,
+  // fjernest først); skylagene DRIVER derudover vandret med egen fart.
   const px = (navn, fliseB, bund, o = {}) => {
-    const fliseH = fliseB * (1546 / 2048);
+    const fliseH = fliseB * FLISE_FORHOLD;
     return malet(fliseB, fliseH, bund, 1024 / fliseB,
                  (W, H) => flise(navn, W, H),
                  { dis: 0x2B4A5E, disM: 0, alpha: 1, ...o });
   };
 
-  tilfoej('skybanke', ...px('px_skybanke', 2600, -693, { alpha: 0.95, drift: 5 }),
-          0.05, Z.parallaks[0]);
-  tilfoej('fjernskyer', ...px('px_fjernskyer', 2400, -1183, { drift: 8 }),
-          0.07, Z.parallaks[1]);
-  tilfoej('fjernskyer1', ...px('px_fjernskyer1', 2200, -760, { drift: 12 }),
-          0.11, Z.parallaks[2]);
-  tilfoej('bakke2', ...px('px_bakke2', 2100, -402),
-          0.16, Z.parallaks[3]);
-  tilfoej('taage_fjern', taagebaand(B * 0.7 + 4000, 7, 150, 330, rng),
-          taageMat(0xEAF3F7, 0.5), 0.2, Z.parallaks[4]);
-  tilfoej('bakke1', ...px('px_bakke1', 1800, -340),
-          0.24, Z.parallaks[5]);
-  tilfoej('skyer', ...px('px_skyer', 1700, -634, { drift: 17 }),
-          0.30, Z.parallaks[6]);
-  tilfoej('buske', ...px('px_buske', 1250, -190),
-          0.42, Z.parallaks[7]);
-  tilfoej('fjerntraeer', ...px('px_fjerntraeer', 1400, -215),
-          0.55, Z.parallaks[8]);
-  tilfoej('taage_naer', taagebaand(B * 0.7 + 4000, 5, 40, 170, rng),
-          taageMat(0xF4F9FB, 0.45), 0.6, Z.parallaks[9]);
-  tilfoej('traeer', ...px('px_traeer', 1100, -174, { svaj: 2 }),
-          0.68, Z.parallaks[10]);
+  // Samme rækkefølge som altid, så rng trækkes i samme orden (tågebåndene).
+  LAG.forEach((d, i) => {
+    if (d.taage) {
+      const tg = d.taage;
+      tilfoej(d.navn, taagebaand(B * 0.7 + 4000, tg.antal, tg.yMin, tg.yMax, rng),
+              taageMat(tg.farve, tg.alpha), d.faktor, Z.parallaks[i], d.vind || 0);
+    } else {
+      tilfoej(d.navn, ...px(d.flise, d.fliseB, d.bund, d.o || {}), d.faktor, Z.parallaks[i], d.vind || 0);
+    }
+  });
+  const pl = { x: 0, y: 0, s: 1 };            // genbruges hver frame
 
   return {
     opdater(tid, vind) {
@@ -246,15 +311,25 @@ export function lavParallaks(scene, kamera, terraen, rng, vejr) {
       himmel.position.x = k.x; himmel.position.y = k.y;
       himmel.scale.set(kamera.right - kamera.left + 60, kamera.top - kamera.bottom + 60, 1);
 
+      // Perspektiv ved zoom: udsnittets højde i forhold til det, lagene er
+      // komponeret til. Ind (zRel < 1) = kameraet kører frem.
+      const zRel = (kamera.top - kamera.bottom) / REF_UDSNIT_H;
+      const dt = sidsteTid < 0 ? 0 : Math.max(0, Math.min(0.1, tid - sidsteTid));
+      sidsteTid = tid;
+      const driv = vinddrift() && Number.isFinite(vind);
+
       for (const l of lag) {
-        // Parallaksen: lagene flyttes ikke, hele laget offsettes.
-        l.mesh.position.x = k.x * (1 - l.faktor) - (l.faktor < 0.35 ? 2200 : 1100);
-        // Forankret i kystlinjen: laget står stille i forhold til horisonten
-        // og følger kun kameraet med sin egen andel af bevægelsen.
-        l.mesh.position.y = FORANKRING + (k.y - REF) * (1 - l.faktor);
+        lagPlacering(l.faktor, k.x, k.y, zRel, FORANKRING, REF, pl);
+        l.mesh.scale.set(pl.s, pl.s, 1);
+        l.mesh.position.x = pl.x;
+        l.mesh.position.y = pl.y;
         const u = l.mesh.material.uniforms;
         if (u?.uTid) u.uTid.value = tid;
         if (u?.uVind) u.uVind.value = vind;
+        if (l.vindDrift && driv) {
+          l.forskyd = (l.forskyd + l.fortegn * vind * l.vindDrift * dt) % l.periode;
+          u.uForskyd.value = l.forskyd;
+        }
       }
     },
 

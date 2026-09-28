@@ -171,7 +171,10 @@ handler; uden `som` er det spiller 1. Serveren ignorerer `som`.
   ændrer reglerne, en ny deltager kommer ind, eller en deltager forsvinder.
   `nedtaelling_ms` og `bane_trukket` bliver `null` igen.
 - **Efter 3 s**, hvis betingelserne stadig holder, starter kampen:
-  1. Banen fra `bane_trukket` skrives i `indst.banetype`.
+  1. Kampen får sin egen kopi af reglerne: et nyt banefrø i `indst.bane`
+     (hver kamp, også Spil igen) og banen fra `bane_trukket` i
+     `indst.banetype`. Rummets egne regler ændres ikke, så en
+     'tilfaeldig'-regel trækkes igen ved næste kamp.
   2. Fightere uden valg og med 'tilfaeldig' får en tilfældig åben
      karakter. Pladserne får `udseende` og `navn`.
   3. Rummet sender `{t:'start', d:{indst, hold}}`, hvor `hold` er de to hold

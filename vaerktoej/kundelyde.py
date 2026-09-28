@@ -4,7 +4,9 @@ Kilden er brugerens egne optagelser i Assets/Kundelyde (AIFC, 24 kHz mono).
 For hver fil:
   1. Find selve lyden ud fra energien i 10 ms-vinduer. Korte klik (under
      60 ms) før og efter tæller ikke med, så de klippes væk.
-  2. Pauser inde i lyden på over 0,9 s kortes ned til 0,4 s.
+  2. Pauser inde i lyden på over 0,9 s kortes ned til 0,4 s. Undtagen i
+     filmklippenes dialog (…_dialog): dér er pauserne brugerens timing
+     (Hansens "Hansen. … Doktor. … Hansen."), så kun før og efter klippes.
   3. Højpas ved 70 Hz (rumlen), lydstyrken normaliseres (EBU R128, -16 LUFS,
      top -1,5 dB), og kanterne tones blødt ind og ud.
   4. Gemmes som Ogg Vorbis i static/lyd/stemme_<navn>.ogg.
@@ -125,6 +127,8 @@ def main():
         st = aktive_stykker(x)
         if not st:
             print('  (tom)', f); continue
+        if n.endswith('_dialog'):
+            st = [(st[0][0], st[-1][1])]    # bevar pauserne
         y = klip(x, st)
         varighed = len(y) / RATE
         with tempfile.NamedTemporaryFile(suffix='.raw', delete=False) as t:

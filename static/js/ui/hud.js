@@ -17,6 +17,23 @@ import { ikonHTML } from './vaabenikoner.js';
 import { MAKS_HP } from '../sim/entities.js';
 import { HZ } from '../core/tick.js';
 
+/* Navneskiltet sidder 12 wu over hovedet (figuren er 46) plus 8 px: så ser
+ * afstanden til hovedet ens ud ved alle zoomtrin. De gamle 74 wu gav 66 px
+ * luft ved det nye, tættere kamera, og skiltet hang i luften. */
+export const ETIKET_WU = 58, ETIKET_PX = 8;
+/* Skade- og helbredstallene popper op OVER skiltet, ikke hen over navnet og
+ * HP, mens skiltet ryster og tæller ned. Skiltets højde læses, når det
+ * findes; ellers ~20 px (10,5 px Poppins + polstring). Luften dækker den gule
+ * ring om den aktive kunde (2,5 + 2 px) og tallets pop (skala 1,25), der når
+ * lidt under tallets eget anker. */
+export const ETIKET_HOEJDE = 20, TAL_LUFT = 6;
+
+/** Skærm-y for et skade- eller helbredstals anker (dets underkant før
+ *  animationen). sy: tilSkaerm(x, y + ETIKET_WU).y; skiltH: skiltets højde. */
+export function talAnker(sy, skiltH = 0) {
+  return sy - ETIKET_PX - (skiltH > 0 ? skiltH : ETIKET_HOEJDE) - TAL_LUFT;
+}
+
 /** Det, der kan ligge i arsenalskuffen: alt undtagen meta-valgene. */
 const ARSENAL = Object.values(VAABEN).filter((w) => w.kategori !== 'meta');
 
@@ -338,7 +355,7 @@ export function lavHud(rod, r) {
         if (b.doed) continue;
         set.add(b.id);
         const x = b.x, y = b.y;           // samme interpolerede position som figuren
-        maal.push({ b, p: r.tilSkaerm(x, y + 74) });
+        maal.push({ b, p: r.tilSkaerm(x, y + ETIKET_WU) });   // se ETIKET_WU
       }
       for (const { b, p } of maal) {
         let n = etiketPulje.get(b.id);
@@ -356,7 +373,7 @@ export function lavHud(rod, r) {
                        p.x < window.innerWidth + 80 && p.y < window.innerHeight + 40;
         n.style.visibility = synlig ? 'visible' : 'hidden';
         if (!synlig) continue;
-        n.style.transform = `translate3d(${p.x | 0}px, ${p.y | 0}px, 0) translate(-50%, -100%)`;
+        n.style.transform = `translate3d(${p.x | 0}px, ${(p.y - ETIKET_PX) | 0}px, 0) translate(-50%, -100%)`;
         const nv = n.firstElementChild, hp = n.lastElementChild;
         if (nv.textContent !== b.navn) nv.textContent = b.navn;
         const s = String(Math.max(0, visHp(b)));
@@ -424,24 +441,24 @@ export function lavHud(rod, r) {
 
     /** Helbredelse popper op over kunden som et grønt tal. */
     helbredTal(b, tal, r) {
-      const p = r.tilSkaerm(b.x, b.y + 58);
+      const p = r.tilSkaerm(b.x, b.y + ETIKET_WU);
       const n = document.createElement('div');
       n.className = 'skadetal plus num';
       n.textContent = `+${tal}`;
       n.style.left = `${p.x | 0}px`;
-      n.style.top = `${p.y | 0}px`;
+      n.style.top = `${talAnker(p.y, etiketPulje.get(b.id)?.offsetHeight) | 0}px`;   // over skiltet
       el.etiketter.appendChild(n);
       setTimeout(() => n.remove(), 1700);
     },
 
     /** Skaden popper op over kunden som et rødt tal. */
     skadeTal(b, tal, r) {
-      const p = r.tilSkaerm(b.x, b.y + 58);
+      const p = r.tilSkaerm(b.x, b.y + ETIKET_WU);
       const n = document.createElement('div');
       n.className = 'skadetal num';
       n.textContent = `−${tal}`;
       n.style.left = `${p.x | 0}px`;
-      n.style.top = `${p.y | 0}px`;
+      n.style.top = `${talAnker(p.y, etiketPulje.get(b.id)?.offsetHeight) | 0}px`;   // over skiltet
       if (tal >= 30) n.classList.add('stor');
       el.etiketter.appendChild(n);
       setTimeout(() => n.remove(), 1700);

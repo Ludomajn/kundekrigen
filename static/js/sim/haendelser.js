@@ -86,6 +86,9 @@ export function kanSke(v, slags) {
     case 'influenza': return levende.some((b) => b.hp > 1);
     case 'vandskade': return v.vandNiveau + VANDSKADE_STIGNING <= VANDSKADE_LOFT;
     case 'loenningsdag': return TU.levendeHold(v).length > 0;
+    // Murstenene falder fra himlen eller under grottens loft (world.nedfaldY):
+    // der skal være luft at falde i over det meste af bæltet, de kan falde i.
+    case 'stenskred': return stenskredMuligt(v);
     // Prøvekørsler uden træk fra rngSim: er der land nok til minerne, og
     // kan ALLE kunder komme et nyt sted hen (ellers passer banneret ikke)?
     case 'shitstorm': return stormSteder(v).length >= SHITSTORM_MINDST;
@@ -282,6 +285,18 @@ const EFFEKT = {
     }
   },
 };
+
+// ---------------------------------------------------------------- stenskredet
+
+/** Kan murstenene falde nogen steder? 16 kolonner hen over bæltet, midten
+ *  trækkes i (300 til w - 300): mindst halvdelen skal have luft at falde i
+ *  — himmel eller et hulrum under grottens loft. */
+function stenskredMuligt(v) {
+  const w = v.terraen.w;
+  let n = 0;
+  for (let i = 0; i < 16; i++) if (v.nedfaldY(300 + (w - 600) * (i + 0.5) / 16, 50) != null) n++;
+  return n >= 8;
+}
 
 // ---------------------------------------------------------------- shitstormen
 

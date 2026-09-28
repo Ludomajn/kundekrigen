@@ -85,6 +85,7 @@ export function lavProjektil(id, opt) {
     sprite: opt.sprite || 'gren',
     spor: opt.spor || null,
     sover: false,
+    hvilerPaa: null,                     // id på kunden, den sover oven på (null = terrænet)
     alder: 0,
   };
 }
@@ -111,6 +112,8 @@ export function lavKasse(id, opt) {
     slags: opt.slags,                    // 'vaaben' | 'helbred' | 'telefon'
     indhold: opt.indhold,
     x: opt.x, y: opt.y, vx: 0, vy: 0,
+    // Fortets forsyningskasser driver kun inden for [xMin, xMax] (physics.skridtKasse).
+    xMin: opt.xMin ?? null, xMax: opt.xMax ?? null,
     landet: false, alder: 0,
   };
 }

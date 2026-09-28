@@ -371,13 +371,16 @@ export function lavLokaltRum(profil, opsaet = {}, navnePulje = []) {
     return bane === 'tilfaeldig' ? lod(BANE_TYPER) : bane;
   }
 
-  /** Kampen går i gang (_gaa_i_gang i rum.py): banen, de to hold med de endelige fightere, fasen. */
+  /** Kampen går i gang (_gaa_i_gang i rum.py): banen, de to hold med de endelige fightere, fasen.
+   *  Hver kamp får en ny bane — også Spil igen: frøet trækkes hver gang, og
+   *  den trukne banetype står kun i kampens kopi af reglerne, så en
+   *  'tilfaeldig'-regel trækkes igen næste gang. */
   function gaaIGang() {
-    if (!rum.indst.bane) rum.indst.bane = (Math.random() * 2 ** 31) >>> 0;
-    rum.indst.banetype = rum.bane_trukket || traekBane();
+    const bane = (Math.random() * 2 ** 31) >>> 0 || 1;
+    const banetype = rum.bane_trukket || traekBane();
     stopNedtaelling();
     rum.fase = 'i_gang';
-    return { indst: rum.indst, hold: holdListe(rum.deltagere, true) };
+    return { indst: { ...rum.indst, bane, banetype }, hold: holdListe(rum.deltagere, true) };
   }
 
   return rum;

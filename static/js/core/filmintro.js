@@ -33,6 +33,8 @@ export const FILM_MS = {
  */
 export const FILM_KUNDE_MS = {
   16: 8775,        // Skrankepaven Ingrid — 16.mp4, 8,775 s
+  18: 9400,        // Hansen, Dr. Hansen — 18.mp4, 9,4 s (frys ved 7,5 s)
+  20: 11108,       // Systemsygeplejerske 2.0 — 20.mp4, 11,108 s (frys ved 9,2 s)
   21: 9650,        // Dr. Jan fra Mors — 21.mp4, 9,65 s
 };
 export const kundeMs = (figur) => FILM_KUNDE_MS[figur] ?? FILM_MS.kunde;

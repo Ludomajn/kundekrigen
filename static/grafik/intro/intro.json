@@ -10,7 +10,6 @@
       "video": "16.mp4",
       "skilt_ms": 4100,
       "valg_video": "16_valg.webm",
-      "valg_video_safari": "16_valg.mov",
       "valg_webp": "16_valg_anim.webp"
     },
     "17": {
@@ -19,18 +18,18 @@
       "replik": null,
       "portraet": "17.webp",
       "stemme": null,
-      "valg_video": "17_valg.webm",
-      "valg_video_safari": "17_valg.mov"
+      "valg_video": "17_valg.webm"
     },
     "18": {
       "navn": null,
       "rolle": null,
-      "replik": null,
+      "replik": "Hansen. Doktor Hansen.",
       "portraet": "18.webp",
       "stemme": null,
       "valg_video": "18_valg.webm",
-      "valg_video_safari": "18_valg.mov",
-      "valg_webp": "18_valg_anim.webp"
+      "valg_webp": "18_valg_anim.webp",
+      "video": "18.mp4",
+      "skilt_ms": 3500
     },
     "19": {
       "navn": null,
@@ -38,18 +37,18 @@
       "replik": null,
       "portraet": "19.webp",
       "stemme": null,
-      "valg_video": "19_valg.webm",
-      "valg_video_safari": "19_valg.mov"
+      "valg_video": "19_valg.webm"
     },
     "20": {
       "navn": null,
       "rolle": null,
-      "replik": null,
+      "replik": "Jeg flækker alle release notes.",
       "portraet": "20.webp",
       "stemme": null,
       "valg_video": "20_valg.webm",
-      "valg_video_safari": "20_valg.mov",
-      "valg_webp": "20_valg_anim.webp"
+      "valg_webp": "20_valg_anim.webp",
+      "video": "20.mp4",
+      "skilt_ms": 4500
     },
     "21": {
       "navn": null,
@@ -60,9 +59,8 @@
       "video": "21.mp4",
       "skilt_ms": 4250,
       "valg_video": "21_valg.webm",
-      "valg_video_safari": "21_valg.mov",
       "valg_webp": "21_valg_anim.webp"
     }
   },
-  "_replikker": "Brugerens egen dialog (Assets/Kundelyde/<Navn>/Dialog.aifc) ligger i klippene. 16 er brugerens ordlyd; 21 er skrevet på rigsdansk."
+  "_replikker": "Brugerens egen dialog (Assets/Kundelyde/<Navn>/Dialog.aifc) ligger i klippene. 16, 18 og 20 er brugerens ordlyd; 21 er skrevet på rigsdansk."
 }

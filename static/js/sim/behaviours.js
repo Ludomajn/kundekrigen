@@ -290,14 +290,20 @@ function luftangreb(v, b, w, ekstra, h) {
     const x = maalX + (i - (la.antal - 1) / 2) * la.spredning * retning + jitter;
     v.forsinkede.push({
       tick: v.tick + i * la.mellemrum,
-      lav: () => lavProjektil(v.nytId(), {
-        x: x - retning * 220, y: v.terraen.h + 60,
-        vx: retning * 120, vy: -la.fart,
-        r: w.projektil.r, vindFaktor: w.projektil.vindFaktor,
-        hop: 0, rammerBaevere: true,
-        detonation: w.detonation, ejer: b.id, ejerHold: b.hold,
-        sprite: w.projektil.sprite, spor: w.projektil.spor,
-      }),
+      lav: () => {
+        // Skråt ind fra himlen — men under grottens loft falder de lige ned
+        // fra loftet over markøren (world.nedfaldY), ellers rammer de kun loftet.
+        const yLoft = v.nedfaldY?.(x, 60, ekstra.y);
+        const loft = yLoft != null && yLoft < v.terraen.h;
+        return lavProjektil(v.nytId(), {
+          x: loft ? x : x - retning * 220, y: loft ? yLoft : v.terraen.h + 60,
+          vx: loft ? 0 : retning * 120, vy: -la.fart,
+          r: w.projektil.r, vindFaktor: w.projektil.vindFaktor,
+          hop: 0, rammerBaevere: true,
+          detonation: w.detonation, ejer: b.id, ejerHold: b.hold,
+          sprite: w.projektil.sprite, spor: w.projektil.spor,
+        });
+      },
     });
   }
   h.push({ navn: 'skudAffyret', vaaben: w.id, baever: b.id, x: maalX, y: v.terraen.h, retning });

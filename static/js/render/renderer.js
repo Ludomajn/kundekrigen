@@ -9,12 +9,31 @@
 import { WebGLRenderer, Scene, OrthographicCamera, Color } from '../three.js';
 import { C } from './palette.js';
 
-// Synlig verdenshøjde ved zoom 1. Sat op fra 720 efter playtest: med et
-// lavere udsyn lå havet næsten altid lige under billedkanten, når man stod
-// på et plateau, og så opdagede man aldrig, at man kunne falde i det.
-export const VERDEN_H = 860;
-export const MIN_BREDDE = 1300;
-export const MAKS_BREDDE = 2600;
+// Synlig verdenshøjde ved zoom 1 (kameraets standardzoom). Sat ned fra 860:
+// dér fyldte en figur (46 wu) kun 5,3 % af skærmhøjden, og spillet føltes
+// langt væk. Ved 460 fylder den 10 %, som i Worms W.M.D. Havet, som var
+// grunden til de 860, holder kameraet nu selv i billedet (camera.js: havet
+// trækker billedet ned), og det zoomer ud, når der sigtes og skydes.
+// Målinger og konstanter: docs/kamera.md.
+export const VERDEN_H = 460;
+// Grænser for bredden ved zoom 1. Mellem dem er højden VERDEN_H (forhold
+// 1,35-3,04: 4:3 til 32:9); uden for dem følger højden med, så billedet
+// aldrig strækkes skævt.
+export const MIN_BREDDE = 620;
+export const MAKS_BREDDE = 1400;
+
+/**
+ * Udsnittet i wu ved zoom 1 for et lærred med forholdet `aspekt` (bredde /
+ * højde). Alt er lineært i zoom: ved zoom z er udsnittet z * b gange z * h.
+ * Skriver i `ud`, så kaldet per frame ikke allokerer.
+ */
+export function udsnit(aspekt, ud = { b: 0, h: 0 }) {
+  const a = aspekt > 0 && Number.isFinite(aspekt) ? aspekt : 16 / 9;
+  const b = Math.max(MIN_BREDDE, Math.min(MAKS_BREDDE, VERDEN_H * a));
+  ud.b = b;
+  ud.h = b / a;
+  return ud;
+}
 
 /* Z-lag.
  *
@@ -61,6 +80,9 @@ export function lavRenderer(laerred) {
     bredde: 1280,
     hoejde: 720,
     zoom: 1,
+    // Udsnittet ved zoom 1 for lærredets forhold (se udsnit). Kameraet
+    // regner sine indramninger med det: ved zoom z ser man z * enhed.
+    enhed: udsnit(16 / 9),
 
     /* Kaldes hver frame (zoom ændrer sig blødt), så setSize må KUN ske når
        lærredets faktiske størrelse har ændret sig. setSize reallokerer
@@ -73,17 +95,22 @@ export function lavRenderer(laerred) {
         api._w = w; api._h = h;
         r.setSize(w, h, false);
       }
-      const aspekt = w / Math.max(1, h);
-      const vh = VERDEN_H * zoom;
       // Behold verdenshøjden fast og udled bredden. En 16:9- og en 16:10-skærm
       // ser dermed samme lodrette udsnit; det er rimeligt nok på et LAN-spil
       // og langt simplere end noget alternativ der bevarer retfærdighed.
-      let vw = vh * aspekt;
-      vw = Math.max(MIN_BREDDE * zoom, Math.min(MAKS_BREDDE * zoom, vw));
+      // Rammer bredden sin grænse, følger højden med i stedet for at strække
+      // billedet (før blev en 4:3-skærm klemt vandret).
+      udsnit(w / Math.max(1, h), api.enhed);
+      const vw = api.enhed.b * zoom, vh = api.enhed.h * zoom;
       kamera.left = -vw / 2; kamera.right = vw / 2;
       kamera.top = vh / 2; kamera.bottom = -vh / 2;
       kamera.updateProjectionMatrix();
       api.bredde = vw; api.hoejde = vh;
+    },
+
+    /** Den zoom, der mindst viser et udsnit på bredde x hoejde wu. */
+    zoomDerViser(bredde, hoejde) {
+      return Math.max(bredde / api.enhed.b, hoejde / api.enhed.h);
     },
 
     tegn() { r.render(scene, kamera); },

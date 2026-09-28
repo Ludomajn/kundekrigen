@@ -45,6 +45,7 @@ export function tagSnapshot(v) {
       vindFaktor: p.vindFaktor, hop: p.hop, rammerBaevere: p.rammerBaevere,
       detonation: p.detonation, fyld: p.fyld, klynge: p.klynge, smitte: p.smitte, lunte: p.lunte,
       ejer: p.ejer, ejerHold: p.ejerHold, sprite: p.sprite, spor: p.spor, sover: p.sover,
+      hvilerPaa: p.hvilerPaa ?? null,
     })),
     placerede: v.placerede.map((p) => ({ ...p })),
     kasser: v.kasser.map((k) => ({ ...k })),

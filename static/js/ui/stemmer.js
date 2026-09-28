@@ -78,19 +78,25 @@ export const EFFEKTER = {
   tonerkanon: s('skud', 'skud_2', 'skud_3', 'skud_4', 'kanon_lyd'),       // bazookaen
   granat: s('granat', 'granat_1', 'granat_2'),                            // Datalæk-bomben kastes
   inferno: s('inferno', 'inferno_2'),                                     // Integrations inferno
-  eksplosion: s('eksplosion', 'eksplosion_2', 'eksplosion_3'),            // små brag (under 50 wu)
-  eksplosion_stor: s('eksplosion_stor'),                                  // 50-69 wu
-  kaempe_eksplosion: s('kaempe_eksplosion'),                              // 70 wu og op
+  // Eksplosionerne varieres på tværs af størrelserne: hver størrelse trækker
+  // blandt flere af brugerens brag, og samme fil kommer aldrig to gange i træk
+  // (heller ikke fra to forskellige størrelser; se FAELLES_SIDST).
+  eksplosion: s('eksplosion', 'eksplosion_2', 'eksplosion_3'),                            // små brag (under 50 wu)
+  eksplosion_stor: s('eksplosion_stor', 'eksplosion', 'eksplosion_2', 'eksplosion_3'),     // 50-69 wu
+  kaempe_eksplosion: s('kaempe_eksplosion', 'eksplosion_stor'),                           // 70 wu og op
 };
+// Grupper, der deler "sidst spillede" — så to eksplosioner i træk aldrig lyder ens.
+const FAELLES_SIDST = { eksplosion: 'brag', eksplosion_stor: 'brag', kaempe_eksplosion: 'brag' };
 
 const sidstEffekt = new Map();
 /** En tilfældig variant af gruppen — aldrig den samme to gange i træk. */
 export function effektLyd(gruppe) {
   const l = EFFEKTER[gruppe];
   if (!l?.length) return null;
+  const noegle = FAELLES_SIDST[gruppe] || gruppe;
   let i = Math.floor(Math.random() * l.length);
-  if (l.length > 1 && l[i] === sidstEffekt.get(gruppe)) i = (i + 1) % l.length;
-  sidstEffekt.set(gruppe, l[i]);
+  if (l.length > 1 && l[i] === sidstEffekt.get(noegle)) i = (i + 1) % l.length;
+  sidstEffekt.set(noegle, l[i]);
   return l[i];
 }
 

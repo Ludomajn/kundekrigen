@@ -174,6 +174,20 @@ export function skridtBaever(t, b, vind) {
   return 0;
 }
 
+// Langsommere end det efter et hop, og et hoppende kasteting sover (wu/s).
+export const SOVEFART = 30;
+
+/**
+ * Bærer kunden et projektil, der ligger i (x, y)? Ja, hvis to wu længere nede
+ * er inde i træfzonen — altså oven på figuren, ikke ved siden af den. Samme
+ * prædikat afgør, om projektilet må falde i søvn på kunden, og om det skal
+ * vågne igen; to forskellige tests ville før eller siden være uenige, og
+ * granaten ville blinke mellem dvale og hop.
+ */
+function baererKunde(b, x, y, r) {
+  return !!b && !b.doed && afstandTilHitbox(b, x, y - 2) <= r;
+}
+
 /**
  * Integrér et projektil med sveipet kollision.
  *
@@ -183,9 +197,17 @@ export function skridtBaever(t, b, vind) {
  */
 export function skridtProjektil(t, p, vind, baevere, modstand = 0) {
   p.alder++;
+  // Lunten brænder én gang pr. tick, hvad projektilet end ellers gør. Den
+  // stod før nederst, og hvert hop sprang den over med en tidlig return: en
+  // granat, der lå og prellede af et hoved, detonerede aldrig, og turen
+  // ventede på vagthunden.
+  if (p.lunte > 0) { p.lunte--; if (p.lunte === 0) return { slags: 'lunte', x: p.x, y: p.y }; }
   if (p.sover) {
-    if (p.lunte > 0) p.lunte--;
-    return p.lunte === 0 ? { slags: 'lunte', x: p.x, y: p.y } : null;
+    if (p.lunte === 0) return { slags: 'lunte', x: p.x, y: p.y };
+    // Sover den på en kunde, vågner den, når kunden går eller dør under den —
+    // ellers hang den i luften, hvor hovedet var.
+    if (p.hvilerPaa == null || baererKunde(baevere.find((b) => b.id === p.hvilerPaa), p.x, p.y, p.r)) return null;
+    p.sover = false; p.hvilerPaa = null;
   }
 
   p.vy -= TYNGDE * DT;
@@ -223,6 +245,12 @@ export function skridtProjektil(t, p, vind, baevere, modstand = 0) {
         p.x = sidstX; p.y = sidstY;
         p.vx = -p.vx * p.hop;
         p.vy = Math.abs(p.vy) * p.hop * 0.5;
+        // Er den faldet til ro oven på figuren, sover den dér som på
+        // terrænet. Ellers trak tyngden den ned i hovedet og op igen hvert
+        // tick, og den faldt aldrig til ro.
+        if (Math.sqrt(p.vx * p.vx + p.vy * p.vy) < SOVEFART && baererKunde(b, sidstX, sidstY, p.r)) {
+          p.sover = true; p.vx = 0; p.vy = 0; p.hvilerPaa = b.id;
+        }
         return null;
       }
     }
@@ -237,7 +265,7 @@ export function skridtProjektil(t, p, vind, baevere, modstand = 0) {
         // Tangentiel friktion, så granater ikke skøjter evigt.
         p.vx *= 0.85;
         const fart = Math.sqrt(p.vx * p.vx + p.vy * p.vy);
-        if (fart < 30) {
+        if (fart < SOVEFART) {
           // Sov — men lad lunten tikke videre. Uden dvale sitrer granater i
           // en sprække i det uendelige, og verden falder aldrig til ro.
           p.sover = true; p.vx = 0; p.vy = 0;
@@ -252,7 +280,6 @@ export function skridtProjektil(t, p, vind, baevere, modstand = 0) {
   }
 
   p.x = x1; p.y = y1;
-  if (p.lunte > 0) { p.lunte--; if (p.lunte === 0) return { slags: 'lunte', x: p.x, y: p.y }; }
   return null;
 }
 
@@ -273,12 +300,17 @@ export function skridtFaldende(t, e, vind = 0, drift = 0) {
   e.x = nx; e.y = ny;
 }
 
-/** Faldskærm: kasser daler med konstant fart og driver med vinden. */
+/** Faldskærm: kasser daler med konstant fart og driver med vinden. En kasse
+ *  med xMin/xMax (fortets, world._slipVaabenkasse) driver kun inden for det
+ *  stykke, den blev sluppet over. Driver den ind i en mur fra siden, glider
+ *  den ned ad muren i stedet for at lande inde i den. */
 export function skridtKasse(t, k, vind) {
   k.alder++;
   if (k.landet) return;
   const ny = k.y - 70 * DT;
-  const nx = k.x + vind * 40 * DT;
+  let nx = k.x + vind * 40 * DT;
+  if (k.xMin != null) nx = Math.max(k.xMin, Math.min(k.xMax, nx));
+  if (nx !== k.x && t.fast(nx, k.y)) nx = k.x;
   if (t.fast(nx, ny)) {
     k.x = nx; k.y = Math.ceil(ny) + 1; k.landet = true;
     return;

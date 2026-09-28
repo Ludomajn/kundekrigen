@@ -11,9 +11,9 @@ Forskydningen er fundet ud fra, hvornår munden bevæger sig i klippet, og en
 krydskorrelation af Veo-stemmens og dialogens energi. Kan køres igen, hvis
 klippet bliver lavet om; så skal tallet måske rettes.
 
-Kør:  python3 vaerktoej/klipdialog.py
+Kør:  python3 vaerktoej/klipdialog.py [figur …]   (uden figurer: alle i KLIP)
 """
-import os, shutil, subprocess, tempfile
+import os, shutil, subprocess, sys, tempfile
 
 HER = os.path.dirname(os.path.abspath(__file__))
 ROD = os.path.dirname(HER)
@@ -23,6 +23,8 @@ LYD = os.path.join(ROD, 'static', 'lyd')
 # figur: (dialogens lyd, sekunder inde i klippet, hvor replikken begynder)
 KLIP = {
     16: ('stemme_ingrid_dialog', 3.2),   # Skrankepaven Ingrid: nærbilledet, fra ca. 3,1 s
+    18: ('stemme_dr_hansen_dialog', 3.0),  # Hansen, Dr. Hansen: et åndedrag, så "Hansen." 3,5–4,3 s, "Doktor" 5,6 s, "Hansen." 7,0–7,5 s (frysning 7,5 s)
+    20: ('stemme_systemsygeplejerske_dialog', 4.5),  # Systemsygeplejerske 2.0: munden går ca. 4,6–6,9 s, kameraet trækker ud fra 7,0 s
     21: ('stemme_jan_dialog', 3.4),      # Dr. Jan fra Mors: munden går fra ca. 3,4 s
 }
 
@@ -34,7 +36,10 @@ def varighed(fil):
 
 
 def main():
+    valgte = {int(a) for a in sys.argv[1:]} or set(KLIP)
     for figur, (dialog, fra) in KLIP.items():
+        if figur not in valgte:
+            continue
         klip = os.path.join(INTRO, f'{figur}.mp4')
         lyd = os.path.join(LYD, f'{dialog}.ogg')
         if not (os.path.exists(klip) and os.path.exists(lyd)):

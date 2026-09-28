@@ -715,17 +715,21 @@ def _gaa_i_gang(r):
     én plads pr. spiller med den endelige karakter, udseende og navn;
     spillernes valg bevares. Opsætningen gemmes i r.opsaet til spillere, der
     genforbinder. Afsenderen sender selv starten (_send_start).
+
+    Hver kamp får en ny bane — også Spil igen: frøet trækkes hver gang, og
+    den trukne banetype står kun i kampens kopi af reglerne, så en
+    'tilfaeldig'-regel trækkes igen næste gang.
     """
-    if not r.indst.get("bane"):
-        r.indst["bane"] = secrets.randbelow(2 ** 31)
-    r.indst["banetype"] = r.bane_trukket or _traek_bane(r)
+    indst = dict(r.indst)
+    indst["bane"] = secrets.randbelow(2 ** 31) or 1
+    indst["banetype"] = r.bane_trukket or _traek_bane(r)
     _stop_nedtaelling(r)
     hold = _hold_liste(r, afgoer=True)
     r.fase = "i_gang"
     r.seq = 0
     r.sidste_vaert_besked = time.time()
     r.stille_meldt = False
-    r.opsaet = {"indst": dict(r.indst), "hold": hold}
+    r.opsaet = {"indst": indst, "hold": hold}
     return r.opsaet
 
 

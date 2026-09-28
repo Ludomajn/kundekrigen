@@ -210,27 +210,19 @@ følgerne) og `static/js/ui/haendelser.js` (lyd, effekter og mærket).
   at siden er indlæst: ingen HTTP-kald, ingen WebSocket.
 - **Turmaskine** — 45 s pr. tur (kan sættes til 15-60 i lobbyen), tilbagetog efter skud, 30 minutters kamp,
   derefter pludselig død hvor vandet stiger hver tur.
-- **Destruktibelt terræn** — pixelmaske på 5120×1792, procedurelt genereret i
-  fire banetyper (fort, åbent land, hulesystem, øer). Højdekurven terrasseres og
-  glattes, så banerne har store flader at kæmpe på frem for konstante skrænter.
+- **Destruktibelt terræn** — pixelmaske på 5120×1792. Hver kamp får en ny,
+  regelbygget bane (i stil med MapGEN til Worms): afstemningen vælger kun typen
+  (fort, åbent land, hulesystem, øer, tilfældig), og generatoren bygger en ny
+  variant efter typens faste regler. Reglerne pr. type står i `docs/baner.md`.
 - **Fortet er standardbanen** — som Worms' fort-tilstand: hver klinik har sin
-  egen store, mest massive borg af murværk (`MUR`: destruktibelt som jord) over
-  åbent hav. Der er intet land imellem, og havet er så bredt, at ingen kan
-  hoppe over; falder man i, drukner man. Borgen har én etage pr. kunde — 2v2
-  giver to, 3v3 tre, højst fire (de ekstra kunder står side om side nederst) —
-  med kundernes rum i det høje fortårn mod fjenden: en rund bue og et
-  skydeskår over en brystning på 48 wu, så et lige skud fra fjendens
-  tilsvarende etage aldrig når kunden, mens man selv kan skyde ud i en bue.
-  Etagerne er forbundet af trappeløb, der går som tunneler i murværket op mod
-  bagsiden (oppe hopper man over hullet i dækket ud mod facaden); fra taget
-  når man udkigskammeret i fortårnet og keepens top. Siluetten trappes ned
-  væk fra fjenden og varierer med frøet: keep med kronetårn, porttårn,
-  vagttårn, tinder, hvælvede haller og gange med vinduer, buer man ser himlen
-  igennem, havbuer under bagdelen, anneks, altaner og gesimser. To klinikker
-  står facade mod facade, fire parvis, og med tre er midterborgen
-  dobbeltsidet. Borgene er spejlede og ens, også udstyret på dem. Layoutet
-  (antal klinikker, kunder pr. klinik) følger med i snapshottet, så gæsterne
-  bygger præcis de samme borge (`terrain_gen.fortPlan`).
+  egen store borg af murværk (`MUR`: destruktibelt som jord). Hver kamp trækker
+  en siluet (borg, tvillinger, spir, ringmur, bastion) og et landskab imellem
+  borgene (hav, skær, ø, bakke, bro, kløft, sø); landet imellem ligger altid
+  uden for hoppeafstand af begge borge. Borgen har én etage pr. kunde, med
+  kundernes rum i fortårnet mod fjenden bag et skydeskår og en brystning, så et
+  lige skud fra fjendens tilsvarende etage aldrig når kunden. Borgene er
+  spejlede og ens, også udstyret på dem, og gæsterne bygger præcis de samme
+  borge ud fra frøet (`terrain_gen.fortPlan`).
 - **Hav i bunden.** Vandlinjen ligger på 300 wu fra kampens start, og et antal
   brede kanaler skæres GARANTERET ned gennem den, så banen deles i landmasser
   med rigtigt vand imellem. Falder man i, drukner man. Støjbaserede kanaler

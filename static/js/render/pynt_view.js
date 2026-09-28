@@ -7,6 +7,11 @@
  * Én geometri, ét drawcall: hver ting er en quad med sin fod, størrelse,
  * atlascelle og svajfaktor som attributter. Svajet regnes i vertex-shaderen.
  *
+ * Hvor tingene står, bestemmer banen selv (terraen.pynt, sat af
+ * baneregler.placerPynt efter banetypens tema): rigtig kontakt med jorden,
+ * tilfældig spejling, en tæthed pr. tema, aldrig klumper og aldrig ved en
+ * startplads. Baner uden egen liste får den gamle placering langs græsset.
+ *
  * Ren præsentation. Når et krater fjerner jorden under en ting, skjules den
  * — tjekket laves kun i det snavsede rektangel, som carve() rapporterer.
  */
@@ -76,16 +81,22 @@ function vaelger(vaegte, rng) {
   };
 }
 
-let atlasTex = null;
-function hentAtlasTex() {
-  if (atlasTex) return atlasTex;
-  atlasTex = new CanvasTexture(lavPyntAtlas());
-  atlasTex.minFilter = atlasTex.magFilter = LinearFilter;
-  atlasTex.generateMipmaps = false;
-  return atlasTex;
+/** Banens egen pynt (baneregler.placerPynt): allerede placeret efter
+ *  banetypens tema med rigtig kontakt, spejling og tæthed, og aldrig ved en
+ *  startplads. Navnene slås op i atlasset. */
+const TYPE_NR = new Map(PYNT_TYPER.map((t, i) => [t.navn, i]));
+function fraBanen(pynt) {
+  const ud = [];
+  for (const p of pynt) {
+    const type = TYPE_NR.get(p.navn);
+    if (type === undefined) continue;
+    ud.push({ x: p.x, y: p.y, type, str: (PYNT_CELLE / 3) * p.str, spejl: p.spejl });
+  }
+  return ud;
 }
 
-export function lavPyntView(scene, terraen, overflader, froe) {
+/** Den gamle placering (baner uden egen pynt): langs græsset, hvor der er fladt. */
+function egenPlacering(terraen, overflader, froe) {
   const rng = lavRng((froe ^ 0x9a7e) >>> 0);
   const inde = vaelger(VAEGTE, rng);
   const kyst = vaelger(VAEGTE_KYST, rng);
@@ -118,6 +129,20 @@ export function lavPyntView(scene, terraen, overflader, froe) {
       });
     }
   }
+  return ting;
+}
+
+let atlasTex = null;
+function hentAtlasTex() {
+  if (atlasTex) return atlasTex;
+  atlasTex = new CanvasTexture(lavPyntAtlas());
+  atlasTex.minFilter = atlasTex.magFilter = LinearFilter;
+  atlasTex.generateMipmaps = false;
+  return atlasTex;
+}
+
+export function lavPyntView(scene, terraen, overflader, froe) {
+  const ting = terraen.pynt ? fraBanen(terraen.pynt) : egenPlacering(terraen, overflader, froe);
 
   const n = ting.length;
   const hjoerne = new Float32Array(n * 8);
