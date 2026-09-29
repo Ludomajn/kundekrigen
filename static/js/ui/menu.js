@@ -324,6 +324,8 @@ export function lavMenu(rod, api) {
       <h2>Pause</h2>
       <nav class="menuliste" id="ml">
         <button data-nav class="mpunkt" id="pFort">Fortsæt</button>
+        <button data-nav class="mpunkt" id="pVejl">Vis vejledningen igen</button>
+        <button data-nav class="mpunkt" id="pTaster">Alle taster</button>
         <button data-nav class="mpunkt" id="pOpt">${T.menu.indstillinger}</button>
         <button data-nav class="mpunkt sek" id="pForlad">Forlad kampen</button>
         ${lydSkydere()}
@@ -331,6 +333,9 @@ export function lavMenu(rod, api) {
       <p class="menufod">I netværksspil kører kampen videre, mens du er i pause.</p>`);
     koblLydSkydere();
     rod.querySelector('#pFort').onclick = () => api.fortsaet();
+    // Vejledningen (ui/hjaelp.js) og tasteoversigten; begge lukker pausen.
+    rod.querySelector('#pVejl').onclick = () => api.visVejledning();
+    rod.querySelector('#pTaster').onclick = () => api.visTaster();
     rod.querySelector('#pOpt').onclick = () => skift('indstillinger');
     rod.querySelector('#pForlad').onclick = () => api.forlad();
     nav = menuNav(rod.querySelector('#ml'), { tilbage: () => api.fortsaet() });

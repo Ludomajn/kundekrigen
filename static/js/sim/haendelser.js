@@ -30,6 +30,7 @@ import * as TU from './turn.js';
 import { VAABEN, tilfaeldigtKassevaaben } from './weapons.js';
 import { TELEFON_MAKS } from './opkald.js';
 import { findStartpladser, VAND_NIVEAU } from './terrain_gen.js';
+import { STORM_ILD_AFSTAND } from './farer.js';
 
 export const HAENDELSE_CHANCE = 0.35;       // pr. rundestart, fra runde 3
 export const HAENDELSE_FRA_RUNDE = 3;       // først efter runde 2
@@ -258,8 +259,11 @@ const EFFEKT = {
   // Brandøvelse: alle levende kunder står bagefter et nyt, sikkert sted —
   // startpladserne (på fortbanen kundens egen borg, også taget og keepens
   // top), aldrig oven i hinanden eller på en mine. ÉN hændelse med
-  // flytningerne, ingen teleport pr. kunde.
+  // flytningerne, ingen teleport pr. kunde. Og ilden er slukket (sim/farer.js)
+  // — FØR flytningen, så sikkertSted er det samme som i prøvekørslen.
   brandoevelse(v, e) {
+    e.slukket = v.ild?.length || 0;
+    if (v.ild) v.ild.length = 0;
     e.flyt = flytAlle(v);
   },
 
@@ -301,16 +305,21 @@ function stenskredMuligt(v) {
 // ---------------------------------------------------------------- shitstormen
 
 /** Stedprøven for ticketminerne: sted(x, afst, nye) giver minens { x, y }
- *  (lige over overfladen i kolonnen x) eller null — i vandet, for tæt på en
- *  kunde (90), en placeret ting (MINE_MIN), en kasse (30) eller de nye miner
- *  (afst). */
+ *  (lige over jorden i kolonnen x) eller null — i vandet, for tæt på en
+ *  kunde (90), en placeret ting (MINE_MIN), en kasse (30), de nye miner
+ *  (afst) eller ild (STORM_ILD_AFSTAND: den spreder sig to celler og ville
+ *  antænde minen). Minerne lander, hvor noget, der falder ned oppefra, lander
+ *  (world.nedfaldY): under åben himmel på overfladen, i grotten — hvor
+ *  klippen går til banens top — på gulvet under loftet. */
 function stormSted(v) {
   const t = v.terraen;
   const levende = v.baevere.filter((b) => !b.doed);
   return (x, afst, nye) => {
     x = Math.round(x);
     if (x < 0 || x >= t.w) return null;
-    const o = t.overflade(x);
+    const ned = v.nedfaldY(x, 0);
+    if (ned == null) return null;
+    const o = ned >= t.h ? t.overflade(x) : t.jordUnder(x, Math.round(ned));
     if (o < 0 || o < v.vandNiveau + 30 || o >= t.h - 10) return null;
     const y = o + 3;
     const naer = (q, d) => Math.hypot(q.x - x, q.y - y) < d;
@@ -318,6 +327,7 @@ function stormSted(v) {
     if (v.placerede.some((p) => !p.doed && naer(p, MINE_MIN))) return null;
     if (v.kasser.some((k) => !k.doed && naer(k, 30))) return null;
     if (nye.some((p) => naer(p, afst))) return null;
+    if (v.ild?.some((p) => naer(p, STORM_ILD_AFSTAND))) return null;
     return { x, y };
   };
 }

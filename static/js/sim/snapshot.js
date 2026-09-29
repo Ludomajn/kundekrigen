@@ -9,6 +9,7 @@
 'use strict';
 
 import { armerRest } from './entities.js';
+import { TILST, TILST_NAVN, FARE_INFO, kopierFare, kopierPlan, ildRest, hudFor, nyPlan } from './farer.js';
 
 export const SNAPSHOT_V = 1;
 
@@ -39,18 +40,26 @@ export function tagSnapshot(v) {
       hp: b.hp, doed: b.doed, drukner: b.drukner,
       retning: b.retning, vinkel: r3(b.vinkel), paaJorden: b.paaJorden,
       skjold: !!b.skjold, springOver: b.springOver | 0, graver: !!b.redskab, smittet: b.smittet | 0,
+      ildTur: b.ildTur | 0,
     })),
     projektiler: v.projektiler.map((p) => ({
       id: p.id, x: r1(p.x), y: r1(p.y), vx: r1(p.vx), vy: r1(p.vy), r: p.r,
       vindFaktor: p.vindFaktor, hop: p.hop, rammerBaevere: p.rammerBaevere,
       detonation: p.detonation, fyld: p.fyld, klynge: p.klynge, smitte: p.smitte, lunte: p.lunte,
       ejer: p.ejer, ejerHold: p.ejerHold, sprite: p.sprite, spor: p.spor, sover: p.sover,
-      hvilerPaa: p.hvilerPaa ?? null,
+      hvilerPaa: p.hvilerPaa ?? null, kaedeId: p.kaedeId ?? null,
     })),
     placerede: v.placerede.map((p) => ({ ...p })),
+    // Farerne, ilden og planlæggeren (sim/farer.js). Køen, forsinkede og
+    // dødskøen er IKKE med: midt i en kæde er snapshottet ikke tabsfrit, men
+    // kun værten simulerer, og den genskaber aldrig.
+    farer: (v.farer || []).map(kopierFare),
+    ild: (v.ild || []).map((p) => ({ ...p })),
+    farePlan: kopierPlan(v.farePlan),
     kasser: v.kasser.map((k) => ({ ...k })),
     gravsten: v.gravsten.map((g) => ({ ...g })),
-    tur: { ...v.tur },
+    // Vejledningens kvote er et objekt: en rigtig kopi, ikke værtens eget.
+    tur: { ...v.tur, vejledningBrugt: { ...(v.tur.vejledningBrugt || {}) } },
     sidsteBaeverPrHold: { ...v.sidsteBaeverPrHold },
     vaabenPrHold: { ...v.vaabenPrHold },
     // Rundens hændelse (internetnedbrud, myldretid …) og den forrige, så
@@ -88,19 +97,32 @@ export function tagDelta(v) {
   // Kasser (telefoner) og udlagte ting (miner, dynamit) flytter sig, kommer
   // til og forsvinder midt i en tur; uden dem her så spejlet dem først ved
   // næste snapshot — en telefon hang i luften, en dynamit var usynlig.
-  const ks = v.kasser.map((k) => [k.id, Math.round(k.x), Math.round(k.y), k.landet ? 1 : 0, k.slags]);
+  // Sjette kolonne: dronens pakke falder frit (1), uden faldskærm.
+  const ks = v.kasser.map((k) => [k.id, Math.round(k.x), Math.round(k.y), k.landet ? 1 : 0, k.slags, k.fald ? 1 : 0]);
   // Sjette kolonne: tick til en nærhedsmine er skarp (0 = skarp / ingen mine).
   const pl = v.placerede.map((p) => [p.id, Math.round(p.x), Math.round(p.y), p.sprite, p.lunte | 0,
                                      armerRest(p)]);
+  // Farerne og ilden (docs/farer.md har kolonnerne). Listerne sendes ALTID,
+  // også tomme — ellers forsvandt den sidste fare aldrig på spejlet.
+  const fa = (v.farer || []).map((f) => [f.id, f.slags, Math.round(f.x * 8) / 8, Math.round(f.y * 8) / 8,
+                                         TILST[f.tilst] ?? 0, f.ret, f.brand | 0, f.spam | 0, f.pakke ? 1 : 0,
+                                         f.hud === 'nullermand' ? 1 : 0, f.styrt | 0]);
+  const il = (v.ild || []).map((p) => [p.id, p.x | 0, p.y | 0, ildRest(v, p) >> 4]);
+  const vs = v.farePlan?.varsel;
   return {
     tick: v.tick,
-    e, pr, ks, pl,
+    e, pr, ks, pl, fa, il,
     h: { holdIdx: v.tur.holdIdx, baever: v.tur.baeverId, tid: v.tur.tickTilbage,
          tilstand: v.tur.tilstand, vind: v.vind, vand: v.vandNiveau,
          // Filmintroen: hvor langt den er (tick), så gæsterne viser samme slag.
          ft: v.tur.tilstand === 'film' ? v.tur.tilstandTick : undefined,
          fs: v.tur.tilstand === 'film' ? (v.tur.filmSprunget || []) : undefined,   // hvem har stemt for at springe over
          retreat: v.tur.retreatTil,
+         // Tick, uret endnu venter på vejledningen (kun mens det venter), så
+         // alle — også modspillere og tilskuere — ser bjælken under uret.
+         vj: v.vejledningTilbage?.() || undefined,
+         // Farens varsel (kantpilen): [slags, x, y, ret, rest], ellers null.
+         fv: vs ? [vs.slags, Math.round(vs.x), Math.round(vs.y), vs.ret, vs.rest] : null,
          // Våbenvalget lever hos værten. Uden det her viser klientens HUD
          // det forkerte våben, indtil næste turskift-snapshot.
          vaaben: v.valgtVaaben, lunte: v.valgtLunte },
@@ -142,12 +164,38 @@ export function anvendDelta(v, d) {
   }
   if (d.ks) {
     const gamle = new Map(v.kasser.map((k) => [k.id, k]));
-    v.kasser = d.ks.map(([id, x, y, landet, slags]) => {
+    v.kasser = d.ks.map(([id, x, y, landet, slags, fald]) => {
       const k = gamle.get(id) || { id, type: 'kasse', slags, indhold: null, vx: 0, vy: 0, alder: 0 };
       k.x = x; k.y = y; k.landet = !!landet;
+      k.fald = !!fald;
       return k;
     });
   }
+  // Farerne og ilden: tildeles ALTID (mangler listen, er der ingen), så
+  // kantpilen og den sidste fare forsvinder. Objekterne genbruges pr. id,
+  // så en interpolations-historik (hist) bevares. maalX/maalY er
+  // interpolationens (net/client.js) — simulationens egne felter hedder
+  // aldrig sådan (dronens flyvehøjde er hoejdeMaal).
+  const gamleF = new Map((v.farer || []).map((f) => [f.id, f]));
+  v.farer = (d.fa || []).map(([id, slags, x, y, tk, ret, brand, spam, pakke, nm, styrt]) => {
+    const f = gamleF.get(id) || { id, type: 'fare', slags, r: FARE_INFO[slags]?.r ?? 14, hy: FARE_INFO[slags]?.hy ?? 14 };
+    f.maalX = x; f.maalY = y;
+    if (!f.hist) { f.x = x; f.y = y; }
+    f.tilst = TILST_NAVN[tk] ?? 'jord';
+    f.ret = ret; f.brand = brand; f.spam = spam; f.styrt = styrt | 0;
+    f.pakke = pakke ? (f.pakke || true) : null;
+    f.hud = nm ? 'nullermand' : hudFor(slags, null);
+    return f;
+  });
+  const gamleI = new Map((v.ild || []).map((p) => [p.id, p]));
+  v.ild = (d.il || []).map(([id, x, y, rest]) => {
+    const p = gamleI.get(id) || { id };
+    p.x = x; p.y = y; p.rest = rest << 4;
+    return p;
+  });
+  if (!v.farePlan) v.farePlan = nyPlan();
+  const fv = d.h.fv;
+  v.farePlan.varsel = fv ? { slags: fv[0], hud: hudFor(fv[0], v.banetype), x: fv[1], y: fv[2], ret: fv[3], rest: fv[4] } : null;
   if (d.pl) {
     const gamle = new Map(v.placerede.map((p) => [p.id, p]));
     v.placerede = d.pl.map(([id, x, y, sprite, lunte, armer]) => {
@@ -164,6 +212,7 @@ export function anvendDelta(v, d) {
   if (d.h.ft !== undefined) v.tur.tilstandTick = d.h.ft;
   if (d.h.fs !== undefined) v.tur.filmSprunget = d.h.fs;
   v.tur.retreatTil = d.h.retreat;
+  v.tur.vejledningRest = d.h.vj | 0;
   v.vind = d.h.vind;
   v.vandNiveau = d.h.vand;
   if (d.h.vaaben) v.valgtVaaben = d.h.vaaben;

@@ -234,6 +234,11 @@ følgerne) og `static/js/ui/haendelser.js` (lyd, effekter og mærket).
 - **Tilfældige hændelser** i starten af en runde fra runde 3: tretten i alt,
   fra stenskred og internetnedbrud til lønningsdag (se afsnittet ovenfor). De
   udløses fra `rngSim`, så alle klienter ser det samme.
+- **Farer i realtid** fra runde 2: en Kabelsalat (Nullermanden i grotten), en
+  Pakkedrone eller en Robotstøvsuger kommer af sig selv ind på banen, med 3 s
+  varsel og en pil i skærmkanten. De skader aldrig selv, men et skud sætter
+  dem i brand, og ilden tænder printere og miner; hele kæden afvikles i
+  skyttens tur ("SYGT PLAY!"). Reglerne står i `docs/farer.md`.
 - **Femten våben** i syv arketyper, datadrevet i `static/js/sim/weapons.js`,
   med begrænset ammo og forsyningskasser, der rent faktisk falder ned.
 - **2–4 klinikker, op til 12 kunder**, fleksibelt ejerskab: en deltager kan styre
@@ -243,8 +248,14 @@ følgerne) og `static/js/ui/haendelser.js` (lyd, effekter og mærket).
 - **Tilpasning** — navn, hudfarve, frisure, hårfarve, ansigt, bukser og sko.
   Gemmes i `localStorage`; en ny browser får automatisk et spilbart hold, som
   gemmes med det samme, så navnene ikke skifter ved hver genindlæsning.
-- **Indbygget kontrolvejledning** — en permanent tastebjælke nederst, en kort
-  boble-intro på ens allerførste tur, og hele tastaturet på `?`.
+- **Tålmodighedsbjælken** — kundens tålmodighed er en bjælke i holdets farve
+  med kaldenavnet og tallet indeni (som i WoW): over kunden, øverst for den
+  aktive og i holdlisten. Skaden holdes tilbage, til skuddet er afviklet, og
+  tælles så ned med sit eget tal; ild tikker med det samme.
+- **Indbygget kontrolvejledning** — en permanent tastebjælke nederst, fem
+  gør-det-trin på ens første tur (gå, hop, sigt, våben, skyd), mens tururet
+  venter højst 30 s pr. spiller pr. kamp, og hele tastaturet på `?`. Esc
+  springer over, og pausemenuen viser vejledningen igen.
 - **Sigtehjælp (valgfri)** — den forudsagte banekurve tegnes med samme
   konstanter som fysikken, så den også viser, hvad vinden gør ved skuddet. Skudstyrken vises
   tre steder på én gang: kurvens længde, en kraftbue om kunden, og farven,

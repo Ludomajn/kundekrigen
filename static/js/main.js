@@ -28,6 +28,7 @@ import { lavFx, lavProjektilView, lavGenstandView, lavSigte, telefonRinger, mine
 import { OPKALD } from './sim/opkald.js';
 import { lavDebug } from './render/debug.js';
 import { lavSorteHuller } from './render/fejl40.js';
+import { lavFareView } from './render/fare_view.js';
 
 import { lavVerden, T as TIL } from './sim/world.js';
 import { K } from './sim/commands.js';
@@ -38,12 +39,14 @@ import * as lyd from './ui/lyd.js';
 
 import { lavTastatur } from './ui/keyboard.js';
 import { lavHud } from './ui/hud.js';
+import { skadeForloeb, skadeK } from './ui/tbj.js';
 import { lavVaabenpanel } from './ui/weaponpanel.js';
 import { lavMenu } from './ui/menu.js';
-import { lavHjaelp } from './ui/hjaelp.js';
+import { lavHjaelp, VEJLEDNING_HAENDELSER } from './ui/hjaelp.js';
 import { lavSejrsfest } from './ui/sejrsfest.js';
 import { lavIntro } from './ui/intro.js';
 import { kobHaendelser } from './ui/haendelser.js';
+import { kobFarer } from './ui/farer.js';
 import { lavFilmIntro, hentFilmData } from './ui/filmintro.js';
 import { karakterLyd, SPEAKER, ALLE_STEMMER, effektLyd } from './ui/stemmer.js';
 import { filmTidslinje, filmFlertal } from './core/filmintro.js';
@@ -75,7 +78,9 @@ const bus = lavBus();
 const r = lavRenderer(laerred);
 const tast = lavTastatur();
 const panel = lavVaabenpanel(panelRod);
-const hjaelp = lavHjaelp(hjaelpRod);
+// Vejledningen: uret venter i min egen tur (simulationens 'vejledning'), og
+// "sprunget over" er et kort banner.
+const hjaelp = lavHjaelp(hjaelpRod, { ur: (a) => vejledningUr(a), besked: (t) => hud?.banner(t, 2000) });
 hjaelp.saetSynlig(false);
 
 /** Al foranderlig tilstand ét sted. */
@@ -181,7 +186,12 @@ const menu = lavMenu(menuRod, {
       bane: (Math.random() * 2 ** 31) >>> 0,
     } });
   },
-  fortsaet() { S.pause = false; S.pauseSlut = performance.now(); menu.skjul(); },
+  fortsaet() { lukPause(); },
+  /** Vejledningen forfra — med det samme i min tur, ellers i min næste (dinTur).
+   *  Er kvoten brugt i kampen, venter uret ikke igen (bjælken vises ikke). */
+  visVejledning() { lukPause(); hjaelp.visIgen(); if (mellemrumErSpil()) vejledningUr(true); },
+  /** Oversigten over alle taster (pausemenuen). */
+  visTaster() { lukPause(); if (!hjaelp.oversigtErAaben) hjaelp.skiftOversigt(); sendInput(); },
   /** Omkamp: tilbage til karaktervalget med de samme valg, og jeg er klar
    *  (ved ét tastatur: alle ved tastaturet). Når alle er klar, tæller rummet
    *  ned som før; vil nogen skifte fighter eller hold, trykker de Ikke klar. */
@@ -358,6 +368,7 @@ function paaBesked(m) {
     case 'kamp_afbrudt':
       S.tilstand = 'lobby';
       slutFilm();
+      hjaelp.ryd();
       hud?.banner(m.d.grund || T.net.kampAfbrudt, 4000, 'advarsel');
       lyd.stopAlleLoekker();
       lyd.stopStemme();
@@ -448,6 +459,9 @@ async function startKamp(opsaet) {
   S.sim?.luk(); S.sim = null;
   slutFilm();
   slutFest();
+  hjaelp.ryd();                            // en vejledning halvvejs i sidste kamp starter forfra
+  S.vjBanner = null;
+  S.spistMellemrum = false;
   S.skudUde = null;
   S.replikker = new Map();                 // hvem der sidst sagde noget (replik)
   S.introStartet = false;
@@ -520,6 +534,8 @@ function byggVisning() {
   S.visHp = new Map();
   S.mineSek = new Map();
   hud.saetVisHp((b) => S.visHp.get(b.id)?.vist ?? b.hp);
+  // Bjælkens fyld falder straks til det, tallet ender på (taelSkade).
+  hud.saetFyldHp((b) => { const e = S.visHp.get(b.id); return e ? (e.t ? e.t.til : e.vist) : b.hp; });
   // HUD'en bygges pr. kamp, så dens klik skal kobles her.
   hud.paaVaelgVaaben((id) => vaelgVaaben(id));
   hud.paaArsenal(() => (panel.aaben ? panel.luk() : aabnArsenal()));
@@ -544,6 +560,8 @@ function byggVisning() {
   });
   const debug = lavDebug(r.scene, v.terraen);
   const sorteHuller = lavSorteHuller(r.scene);
+  // Farerne i realtid og ilden (render/fare_view.js); ui/farer.js fortæller den, hvad der sker.
+  const farer = lavFareView(r.scene, { fx });
 
   const baevere = new Map();
   for (const b of v.baevere) baevere.set(b.id, lavBaeverView(r.scene, b, b.hold, v.terraen));
@@ -552,9 +570,9 @@ function byggVisning() {
   vejr.saetType(v.vejr);
 
   visning = {
-    terraen, pynt, parallaks, vejr, vand, fx, projektiler, genstande, sigte, kamera, debug, baevere, sorteHuller,
+    terraen, pynt, parallaks, vejr, vand, fx, projektiler, genstande, sigte, kamera, debug, baevere, sorteHuller, farer,
     fjern() {
-      sorteHuller.fjern();
+      sorteHuller.fjern(); farer.fjern(); S.fareUi?.fjern(); S.fareUi = null;
       terraen.fjern(); pynt.fjern(); parallaks.fjern(); vejr.fjern(); vand.fjern();
       fx.fjern(); projektiler.fjern(); genstande.fjern(); sigte.fjern(); debug.fjern();
       for (const [, bv] of baevere) bv.fjern();
@@ -572,8 +590,13 @@ function koblHaendelser() {
   bus.paa('eksplosion', (e) => {
     visning.fx.eksplosion(e.x, e.y, e.radius);
     // Kameraet: rystelse efter radius og afstand, et kort punch-in, og et
-    // spark ved de store brag (Datalæk-bomben).
-    visning.kamera.eksplosion(e.x, e.y, e.radius);
+    // spark ved de store brag (Datalæk-bomben). Men et kædebrag, mens der
+    // sigtes (ilden satte en printer af), må ikke skubbe billedet: kun en
+    // rystelse (docs/farer.md, D17).
+    if (e.kaede >= 1 && S.verden?.tur.tilstand === TIL.SPILLER_AKTIV) {
+      const k = r.kamera.position;
+      visning.kamera.rystelse(Math.min(1, e.radius / 60), Math.hypot(e.x - k.x, e.y - k.y));
+    } else visning.kamera.eksplosion(e.x, e.y, e.radius);
     // Én lyd pr. brag, med forrang, så affyringslyden ikke overdøver den:
     // brugerens egne eksplosioner, efter størrelsen, HVER gang et skud rammer
     // eller en bombe går af — varieret, aldrig samme to gange i træk. (Klynger
@@ -675,10 +698,21 @@ function koblHaendelser() {
     // mellem dens Tur-filer), i kø efter skyttens reaktion, så intet overlapper.
     if (!(e.turNr === 1 || S.verden.tur.turNr === 1)) replik(b, 'tur', { altid: true, vigtig: true });
     hud.banner(mit ? T.spil.dinTur : `${T.spil.turFor} ${b ? b.navn : ''}`, 2300);
-    // Introen skal først komme, når spilleren faktisk har kontrollen — ellers
-    // læser man den, mens en anden er i gang, og har glemt den bagefter.
-    if (mit) hjaelp.foersteTur();
   });
+  // Vejledningen kommer først, når spilleren faktisk har kontrollen (dinTur,
+  // efter TUR_START) — før det afviser simulationen al bevægelse.
+  bus.paa('dinTur', (e) => {
+    const b = S.verden.baevere.find((x) => x.id === (e.baever ?? S.verden.tur.baeverId));
+    if (b && erMin(b)) hjaelp.dinTur();
+  });
+  // Hver af vejledningens trin klares af den handling, det beskriver
+  // (hjaelp.js afgør ud fra hændelsen, om det var spillerens egen).
+  for (const navn of VEJLEDNING_HAENDELSER) {
+    bus.paa(navn, (e) => {
+      const akt = S.verden?.aktivBaever();
+      if (akt && erMin(akt) && (e?.baever == null || e.baever === akt.id)) hjaelp.noter(navn, e);
+    });
+  }
   bus.paa('sejr', (res) => {
     // Værten får afgørelsen ad to veje (sin egen klient og workeren); kun
     // den første tæller.
@@ -733,6 +767,8 @@ function koblHaendelser() {
   });
   bus.paa('kasseFalder', (e) => {
     if (e.slags !== 'vaaben') return;              // telefon og piller har egne bannere
+    // Den nedskudte drones pakke falder frit, uden faldskærm (og uden dens lyd).
+    if (e.fald) { hud.banner('Pakken falder!', 1600); return; }
     hud.banner('Forsyningskasse på vej!', 1600);
     const rum = rumlig(e.x, e.y, 2400);
     lyd.afspil('kasse_falder', { vol: 0.5 + 0.8 * rum.vol, pan: rum.pan });
@@ -758,6 +794,11 @@ function koblHaendelser() {
   });
   bus.paa('hændelse', (e) => hud.banner(e.tekst, 3200, 'advarsel'));
   kobHaendelser({ bus, hud, lyd, visning, S, r });   // rundens hændelser: lyd, effekter, mærket (ui/haendelser.js)
+  // Farerne i realtid: varsel, kantpil, ord, lyd og kameraglimt (ui/farer.js).
+  // Kantpilen går uden om holdlisten, arsenalets håndtag og vejledningens kort.
+  S.fareUi = kobFarer({ bus, hud, lyd, visning, S, r, rod: hudRod,
+                        hindringer: [hud.el.hold, hud.el.arsenal, hjaelpRod.querySelector('#hjBoble')] });
+  S.ildReplik = new Map();                           // kunde -> turen, den sidst sagde "av" til ilden
 
   // ---- fuldtræffer: skal kunne MÆRKES — banner, ekstra rystelse og et knald.
   bus.paa('fuldtraeffer', (e) => {
@@ -773,14 +814,23 @@ function koblHaendelser() {
   bus.paa('hop', () => lyd.afspil('hop'));
   bus.paa('salto', () => lyd.afspil('salto'));
   bus.paa('skade', (e) => {
-    // Et fald lander tungt; COVID hoster; alt andet er et slag.
+    // Et fald lander tungt; COVID hoster; alt andet er et slag. Ild tikker
+    // hvert halve sekund: ingen lyd her (taelSkade slår, når tallet kommer).
+    const ild = e.aarsag === 'ild';
     const slags = e.aarsag === 'fald' ? 'tungt_fald' : e.aarsag === 'covid' ? 'covid_host' : 'skade';
-    lyd.afspil(slags, { tone: 0.92 + Math.random() * 0.16 });
-    skudRamte(e.baever);
+    if (!ild) lyd.afspil(slags, { tone: 0.92 + Math.random() * 0.16 });
+    // Rosen er skyttens: kun dens egen kæde (eller en skade uden kendt skytte)
+    // tæller som et træf — ikke ilden fra en tidligere tur.
+    if (e.kildeHold == null || e.kildeBaever == null || e.kildeBaever === S.skudUde?.skytte) skudRamte(e.baever);
     // Den ramte siger fra: lidt skade "av", meget skade sur. (Dør den, siger
-    // den sit i dødsfaldet i stedet.)
+    // den sit i dødsfaldet i stedet.) Ild kun første gang i turen (D21).
     const ramt = S.verden.baevere.find((x) => x.id === e.baever);
-    if (ramt && !ramt.doed) replik(ramt, e.skade >= 30 ? 'sur' : 'av');
+    if (!ramt || ramt.doed) return;
+    if (!ild) replik(ramt, e.skade >= 30 ? 'sur' : 'av');
+    else if (S.ildReplik?.get(ramt.id) !== S.verden.tur.turNr) {
+      S.ildReplik?.set(ramt.id, S.verden.tur.turNr);
+      replik(ramt, 'av');
+    }
   });
   bus.paa('kasseSamlet', (e) => {
     lyd.afspil(e.slags === 'helbred' ? 'piller' : e.slags === 'vaaben' ? 'vaaben_samlet' : 'kasse_samlet');
@@ -857,7 +907,8 @@ function koblHaendelser() {
 
   // ---- Klageklask: slaget rammer lidt efter svinget.
   bus.paa('klask', (e) => {
-    if (!e.maal?.length) return;
+    // Også et klask, der kun ramte en fare (Kabelsalaten slås væk, støvsugeren vender).
+    if (!e.maal?.length && !e.farer?.length) return;
     visning.fx.klask(e.x, e.y, e.retning ?? 1);
     visning.kamera.rystelse(0.45, 0);
     lyd.afspil('klask_ramt', { forrang: true });
@@ -901,6 +952,21 @@ const navnPaa = (id) => S.verden?.baevere.find((x) => x.id === id)?.navn ?? 'Kun
 
 const erMin = (b) => !S.erNet || b.ejer === S.pid ||
   (!b.ejer && S.verden.pidPaaHold(S.pid, b.hold));
+
+/** Er mellemrummet spillets lige nu (lade op, skyde, stoppe boret)? Samme
+ *  betingelse som opladningen. Ellers kan vejledningens slutkort tage det. */
+function mellemrumErSpil() {
+  const v = S.verden, akt = v?.aktivBaever();
+  return !!(akt && !akt.doed && erMin(akt) && v.tur.tilstand === TIL.SPILLER_AKTIV);
+}
+/** Uret venter på vejledningen — kun i min egen tur; simulationen har loftet
+ *  (VEJLEDNING_LOFT pr. spiller pr. kamp) og afviser den fra alle andre. */
+function vejledningUr(aktiv) {
+  const akt = S.verden?.aktivBaever();
+  if (S.tilstand !== 'spil' || !akt || !erMin(akt)) return;
+  afsend({ k: 'handling', seq: S.seq++, h: 'vejledning', aktiv });
+}
+function lukPause() { S.pause = false; S.pauseSlut = performance.now(); menu.skjul(); }
 
 /* ------------------------------------------------------------------ løkke */
 
@@ -1083,23 +1149,29 @@ function foelgSkud(v, vi) {
  * nye tal. Kun præsentation — simulationen har trukket skaden med det samme.
  */
 const UROLIG = new Set(['affyring', 'oploesning']);
+// Skadelyden højst hvert 1,2 s pr. kunde: ild tikker hvert halve sekund, og en
+// lyd pr. tik blev en maskinpistol. Tallet popper stadig op hver gang.
+const SKADELYD_MS = 1200;
 function taelSkade(v, vi, nu) {
   const roligt = !UROLIG.has(v.tur.tilstand);
   for (const b of v.baevere) {
     let e = S.visHp.get(b.id);
     if (!e) { e = { vist: b.hp }; S.visHp.set(b.id, e); }
     if (b.hp > e.vist && !e.t) { e.vist = b.hp; continue; }     // helbredt: med det samme
-    if (!e.t && b.hp < e.vist && roligt) {
-      e.t = { fra: e.vist, til: b.hp, start: nu,
-              varighed: Math.min(2200, 900 + (e.vist - b.hp) * 18) };
-      hud.skadeTal(b, e.vist - Math.max(0, b.hp), r);
-      lyd.afspil('skade', { vol: 0.7 });
+    // Ny skade afsløres først i ro, også midt i en nedtælling: aldrig foldet
+    // ind i den kørende kurve (så faldt fyldet midt i skuddet, og tallet
+    // sprang uden eget tal og lyd), men en ny afsløring fra det tal, der står
+    // nu. Fyldet falder straks; tallet og det tabte venter TAB_HOLD_MS (ui/tbj.js).
+    const maal = e.t ? e.t.til : e.vist;
+    if (roligt && b.hp < maal) {
+      hud.skadeTal(b, maal - Math.max(0, b.hp), r);
+      if (!(nu - e.lyd < SKADELYD_MS)) { lyd.afspil('skade', { vol: 0.7 }); e.lyd = nu; }
       hud.markerRamt(b.id, true);
       vi.baevere.get(b.id)?.ramt?.();
+      e.t = skadeForloeb(e.vist, b.hp, nu);
     }
     if (e.t) {
-      if (b.hp < e.t.til) e.t.til = b.hp;                        // mere skade undervejs
-      const k = Math.min(1, (nu - e.t.start) / e.t.varighed);
+      const k = skadeK(e.t, nu);
       const blød = 1 - Math.pow(1 - k, 2);
       const foer = e.vist;
       e.vist = Math.round(e.t.fra + (e.t.til - e.t.fra) * blød);
@@ -1187,6 +1259,14 @@ function opdaterVisning(dt, tid) {
   vi.fx.opdater(dt, r.renderer.domElement.height / (r.kamera.top - r.kamera.bottom));
   vi.projektiler.opdater(v.projektiler);
   vi.genstande.opdater(v.kasser, v.placerede, v.gravsten, v.terraen);
+  // Farerne og ilden (tegningen glatter selv farernes 20 Hz over nettet), så
+  // pilen, skiltet, den ventende lyd og ildens knitren (ui/farer.js). Pilen og
+  // skiltet regnes her (læser layout) og skrives først efter HUD'en nederst
+  // (S.fareUi.skriv): ellers tvang HUD'ens læsninger en layout hver frame.
+  const fo = (S.fareOpt ||= { tick: 0, terraen: null, figur: (id) => S.verden?.baevere.find((b) => b.id === id) });
+  fo.tick = v.tick; fo.terraen = v.terraen;
+  vi.farer.opdater(v.farer, v.ild, tid, fo);
+  S.fareUi?.opdater(v, false);
   // Telefonerne ringer i takt med deres animation; tættere på lyder højere.
   const nuS = performance.now() / 1000;
   for (const k of v.kasser) {
@@ -1275,6 +1355,22 @@ function opdaterVisning(dt, tid) {
   const tilstandTekst = v.tur.tilstand === TIL.UDSAET ? T.spil.udsaetter : null;
   const aktNu = v.aktivBaever();
   const minTur = !!(aktNu && erMin(aktNu));
+  // Vejledningen: gå- og sigtetrinnet klares af tasterne, når de virker (ikke
+  // i markørtilstand, med arsenalet, oversigten eller pausen fremme).
+  const egenTur = mellemrumErSpil();
+  const vjRest = v.tur.vejledningRest | 0;
+  const fri = egenTur && !S.pause && !panel.aaben && !S.markoerTilstand && !hjaelp.oversigtErAaben;
+  hjaelp.opdater({ dt, tilstand: v.tur.tilstand, egenTur, vaaben: v.vaabenNu(),
+    gaar: fri && (tast.nede('venstre') || tast.nede('hoejre')),
+    sigter: fri && (tast.nede('sigtOp') || tast.nede('sigtNed')),
+    uretVenter: vjRest > 0,
+    // Den aktive kundes fødder på skærmen: kortet må ikke dække ham.
+    fodY: aktNu && !aktNu.doed ? r.tilSkaerm(aktNu.x, aktNu.y).y : null });
+  // Modspillere og tilskuere: hvorfor står uret stille? Én gang pr. tur.
+  if (aktNu && !minTur && vjRest > 0 && S.vjBanner !== `${v.tur.turNr}|${aktNu.id}`) {
+    S.vjBanner = `${v.tur.turNr}|${aktNu.id}`;
+    hud.banner(`${aktNu.navn} lærer styringen — uret venter højst ${Math.ceil(vjRest / HZ)} s`, 2600);
+  }
   // Brugte man sidste Hjemmearbejde eller Kabelbakke, står man med et tomt
   // våben i hånden og turen fortsætter: sig det, én gang.
   // (Scannerens andet skud er betalt, selv om tallet viser 0 — den tier vi om.)
@@ -1298,6 +1394,7 @@ function opdaterVisning(dt, tid) {
   // Ved ét tastatur er den aktive kunde altid "min" (DIN TUR, egen markering),
   // også når det er spiller 2's kunde.
   hud.opdater(v, S.erNet ? S.pid : (aktNu?.ejer ?? S.pid), tilstandTekst, S.oplader, lokalKraft(), minTur);
+  S.fareUi?.skriv();                       // farernes pil og skilt: efter HUD'ens læsninger
 }
 
 /* -------------------------------------------------------------- filmintro */
@@ -1462,10 +1559,13 @@ function ryddMarkoer() {
 
 /** De holdte taster, som simulationen skal have (null = intet må sendes). */
 function holdNu() {
-  if (S.pause || panel.aaben) return 0;
+  if (S.pause || panel.aaben || hjaelp.oversigtErAaben) return 0;
   // I markørtilstand flytter piletasterne markøren — ikke også kunden.
   const pile = K.VENSTRE | K.HOEJRE | K.SIGT_OP | K.SIGT_NED;
-  return S.markoerTilstand ? tast.bitmaske() & ~pile : tast.bitmaske();
+  const b = S.markoerTilstand ? tast.bitmaske() & ~pile : tast.bitmaske();
+  // Et mellemrum, vejledningens slutkort tog, lader ikke op — heller ikke,
+  // hvis det stadig er nede, når næste tur begynder.
+  return S.spistMellemrum ? b & ~K.LAD : b;
 }
 
 function sendInput() {
@@ -1509,6 +1609,25 @@ tast.paaTryk((handling, e) => {
   // også hoppe, lade op eller pause igen.
   if (S.pause && handling !== 'pause') return;
   if (S.pauseSlut && performance.now() - S.pauseSlut < 200) return;
+  // Oversigten (?) tager ALLE taster, til den er lukket (før nåede mellemrum opladningen).
+  if (e.code === 'Slash' || e.code === 'F1' || e.key === '?') {
+    if (panel.aaben) panel.luk();
+    if (S.oplader) { S.oplader = false; lyd.ladelyd(null); }
+    hjaelp.skiftOversigt();
+    sendInput();
+    return;
+  }
+  if (hjaelp.oversigtErAaben) {
+    if (e.code === 'Escape') { hjaelp.lukOversigt(); sendInput(); }
+    return;
+  }
+  // Vejledningen: Esc springer over (markøren går forud). MELLEMRUM går kun videre på
+  // slutkortet, og kun når mellemrummet ikke er spillets — så starter det aldrig en opladning.
+  if (!S.pause && hjaelp.tast(e, { egenTur: mellemrumErSpil(), markoer: S.markoerTilstand })) {
+    if (e.code === 'Space') { S.spistMellemrum = true; lyd.afspil('klik'); }
+    sendInput();
+    return;
+  }
   const v = S.verden;
   const akt = v?.aktivBaever();
 
@@ -1525,16 +1644,6 @@ tast.paaTryk((handling, e) => {
     }
   }
   sendInput();
-
-  if (e.code === 'Slash' || e.code === 'F1' || e.key === '?') {
-    if (panel.aaben) panel.luk();
-    hjaelp.skiftOversigt();
-    return;
-  }
-  if (hjaelp.oversigtErAaben) {
-    if (e.code === 'Escape') hjaelp.lukOversigt();
-    return;
-  }
 
   switch (handling) {
     case 'pause':
@@ -1592,6 +1701,8 @@ tast.paaTryk((handling, e) => {
 });
 
 tast.paaSlip((handling) => {
+  // Også rydAlt's kunstige slip (fokus tabt), så flaget aldrig hænger.
+  if (handling === 'lad') S.spistMellemrum = false;
   sendInput();
   if (handling !== 'lad' || S.tilstand !== 'spil' || S.pause) return;
   const v = S.verden;

@@ -33,21 +33,32 @@ Pr. gruppe:
   9. Gemmes som Ogg Vorbis (mono, 44,1 kHz, q5). Vorbis kan skyde toppen op til
      3 dB over på klippede anslag; så dæmpes der og kodes igen.
 
-To grupper bygges særskilt:
+Tre grupper bygges særskilt:
   bor    - en sømløs løkke af barbermaskinens jævne midterstykke. Løkkelængden
            vælges, så stykket efter slutningen ligner starten mest, og enderne
            krydstones. Ingen udtoning; skal afspilles med Web Audio loop = true.
   oplad  - hydraulikkens stigende stykke, sænket 0,6x som et båndtempo (ingen
            artefakter), så det bliver ~0,7 s som den gamle sfx_oplad. Stigningen
            i styrke og lyshed måles og skrives ud.
+  ild    - ildens knitren (farerne): en løkke af papirets knitren, som foley
+           laver ild af. Det jævne midterstykke tages tre gange i tre båndtempi
+           og krydstones sammen, så mønstret ikke gentager sig hvert halve
+           sekund; enderne krydstones som borets (lige effekt). Loop = true.
 
-Kør:  python3 vaerktoej/kontorlyde.py [mappe med 400 Sounds Pack]
+Kør:  python3 vaerktoej/kontorlyde.py [mappe med 400 Sounds Pack] [--kun gruppe,gruppe]
+      --kun bygger kun de nævnte grupper; de andre filer røres ikke.
 """
 import array, cmath, math, os, subprocess, sys
 
 HER = os.path.dirname(os.path.abspath(__file__))
 ROD = os.path.dirname(HER)
-PAKKE = sys.argv[1] if len(sys.argv) > 1 else os.path.join(ROD, '..', 'Assets', '400 Sounds Pack')
+ARG = list(sys.argv[1:])
+KUN = None                                   # --kun a,b: kun de grupper
+if '--kun' in ARG:
+    i = ARG.index('--kun')
+    KUN = set(ARG[i + 1].split(',')) if i + 1 < len(ARG) else set()
+    del ARG[i:i + 2]
+PAKKE = ARG[0] if ARG else os.path.join(ROD, '..', 'Assets', '400 Sounds Pack')
 UD = os.path.join(ROD, 'static', 'lyd')
 SR = 44100
 TOP_DB = -3.0
@@ -136,9 +147,27 @@ GRUPPER = [
     # Seks hele tasteanslag med ~80 ms mellemrum (0,46-0,88 s); næste anslag er først ved 0,98 s.
     # Kort udtoning (30 ms), så den sjette tast ikke tones væk.
     ('inferno_delt', 0.5, 'let', [('Other/keyboard_typing', {'start': 0.44, 'ud': 0.03})]),
+    # Farerne i realtid (ui/farer.js). Varslerne: hver fare sin kontorlyd, 3 s før den kommer.
+    # Kabelsalaten: terninger, der ruller og rasler (stik og kabler, 8 anslag/s).
+    ('fare_kabelsalat', 1.0, 'signal', ['Card and Board/dice_roll_3', 'Card and Board/dice_roll_4']),
+    # Nullermanden (grotten): en støvtot, ikke kabler; kosten, der fejer.
+    ('fare_nullermand', 0.8, 'signal', ['Items/broom_sweep_1', 'Items/broom_sweep_2']),
+    # Pakkedronen: hårtørrerens summen fra starten, så den stiger (0,4 s) og tones ud,
+    # som en drone, der kommer nærmere.
+    ('fare_drone', 1.5, 'signal', [('Machines/hairdryer', {'ud': 0.4})]),
+    # Robotstøvsugeren vågner: boremaskinens motor, der snurrer op.
+    ('fare_stoevsuger', 1.5, 'signal', [('Machines/drill_whizz', {'ud': 0.3})]),
+    # KORTSLUTNING: ilden, der tændes (et pust), og tændstikken, der strøges.
+    ('kortslutning', 0.8, 'begivenhed', ['Environment/fire_lighting', ('Other/light_match', {'ud': 0.15})]),
+    # Overophedet: den langsomme advarsel (0,9 s toner, så stilhed); ikke firkantbølge.
+    ('stoevsuger_alarm', 1.1, 'begivenhed', [('UI/synth_warning', {'ud': 0.2})]),
+    # NOM: den suger mailen op (slurp) eller gumler den (hver sin variant).
+    ('nom', 0.5, 'signal', [('Other/drink_slurp', AUTO), ('Other/munching_food', AUTO)]),
+    ('ild', 2.0, 'svag', None),                                            # løkke, se byg_ild
 ]
 OPLAD = ('Machines/hydraulic_up', 0.20, 0.62, 0.6)          # kilde, fra, til, båndtempo
 BOR = ('Machines/razor_buzz', 0.165, 1.000, 1.014, 0.05)    # kilde, start, min./maks. længde, krydstoning
+ILD = ('Materials/paper_scrunch', 0.26, 0.78, (1.0, 0.86, 0.93), 0.06, 5000)   # kilde, fra, til, båndtempi, krydstoning, lavpas
 
 
 # ---------- lyd ind og ud ----------
@@ -318,6 +347,32 @@ def byg_bor():
                                   f'{abs(y[0] - y[-1]) / spring:.1f}x median'])]
 
 
+def byg_ild():
+    rel, fra, til, tempi, kf_s, lp = ILD
+    x, _ = forbered(rel, 30)
+    stykke = x[int(fra * SR):int(til * SR)]
+    # Tre båndtempi (dybere og langsommere) med lavpas, så papiret knitrer i stedet for at rasle.
+    dele = [list(ffmpeg_ror(stykke, f'aresample={SR},lowpass=f={lp}', rate_ind=round(SR * t))) for t in tempi]
+    F = int(kf_s * SR)
+    ind = [math.sin(i / F * math.pi / 2) for i in range(F)]      # lige effekt: knitren er ukorreleret
+    ud = [math.cos(i / F * math.pi / 2) for i in range(F)]
+    y = dele[0]
+    for d in dele[1:]:
+        n = len(y) - F
+        for i in range(F):
+            y[n + i] = y[n + i] * ud[i] + d[i] * ind[i]
+        y += d[F:]
+    # Løkken: halen krydstones ind i starten og skæres af, så slutningen går lige over i starten.
+    n = len(y) - F
+    for i in range(F):
+        y[i] = y[i] * ind[i] + y[n + i] * ud[i]
+    y = y[:n]
+    spring = sorted(abs(y[i + 1] - y[i]) for i in range(len(y) - 1))[len(y) // 2]
+    return [(rel, normaliser(y), [f'{fra:.2f}-{til:.2f} s af kilden i båndtempi {", ".join(f"{t}x" for t in tempi)}, '
+                                  f'lavpas {lp} Hz, løkke {len(y) / SR:.2f} s, krydstoning {kf_s * 1000:.0f} ms, '
+                                  f'spring i sømmen {abs(y[0] - y[-1]) / spring:.1f}x median'])]
+
+
 # ---------- målinger ----------
 
 def fft(v):
@@ -379,10 +434,14 @@ def main():
     os.makedirs(UD, exist_ok=True)
     total, antal, forslag = 0.0, 0, []
     for gruppe, maks, slags, kilder in GRUPPER:
+        if KUN is not None and gruppe not in KUN:
+            continue
         if gruppe == 'bor':
             bygget = byg_bor()
         elif gruppe == 'oplad':
             bygget = byg_oplad()
+        elif gruppe == 'ild':
+            bygget = byg_ild()
         else:
             bygget = []
             for k in kilder:

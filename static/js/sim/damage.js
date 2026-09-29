@@ -24,8 +24,19 @@ export const SMITTE_SKADE = 6;
 export const SMITTE_AFSTAND = 60;
 export const SMITTE_TURER = 2;
 
-export function eksploder(v, x, y, radius, maksSkade, knockback, carve = true, direkte = null) {
+/* KÆDEN: fire flade felter følger et brag, en skade, en ildplet og en fare
+ * (sim/farer.js, docs/farer.md) — kaedeId (skuddets id, klyngens børn arver
+ * det), kildeHold og kildeBaever (skytten) og kaede (dybden: 0 er skuddets
+ * eget brag; det, et brag sætter i gang, er ét led dybere). */
+export function kildeFelter(k) {
+  return { kaede: k?.kaede | 0, kaedeId: k?.kaedeId ?? null,
+           kildeHold: k?.kildeHold ?? null, kildeBaever: k?.kildeBaever ?? null };
+}
+const ledDybere = (k) => ({ ...kildeFelter(k), kaede: (k?.kaede | 0) + 1 });
+
+export function eksploder(v, x, y, radius, maksSkade, knockback, carve = true, direkte = null, kilde = null) {
   const haendelser = [];
+  const ekstra = kilde ? kildeFelter(kilde) : null;
 
   if (carve) {
     v.terraen.carve(x, y, radius);
@@ -43,7 +54,7 @@ export function eksploder(v, x, y, radius, maksSkade, knockback, carve = true, d
     const f = erDirekte ? 1 : 1 - d / radius;
     const skade = Math.round(maksSkade * f * (erDirekte ? FULDTRAEF_BONUS : 1));
     if (erDirekte && !b.skjold) haendelser.push({ navn: 'fuldtraeffer', baever: b.id, x, y, skade });
-    if (skade > 0) givSkade(v, b, skade, erDirekte ? 'fuldtraeffer' : 'eksplosion', haendelser);
+    if (skade > 0) givSkade(v, b, skade, erDirekte ? 'fuldtraeffer' : 'eksplosion', haendelser, ekstra);
     // Kraftfeltet holder også skubbet ude: kunden står, hvor den stod.
     if (b.skjold) continue;
 
@@ -61,8 +72,8 @@ export function eksploder(v, x, y, radius, maksSkade, knockback, carve = true, d
     const dx = e.x - x, dy = e.y - y;
     if (dx * dx + dy * dy < radius * radius) {
       e.doed = true;
-      v.eksplosionsKoe.push({ x: e.x, y: e.y, ...e.detonation });
-      if (e.sprite === 'toende') haendelser.push({ navn: 'printerSprang', x: e.x, y: e.y });
+      v.eksplosionsKoe.push({ x: e.x, y: e.y, ...e.detonation, kilde: ledDybere(kilde) });
+      if (e.sprite === 'toende') haendelser.push({ navn: 'printerSprang', x: e.x, y: e.y, ...ledDybere(kilde) });
     }
   }
   for (const k of v.kasser) {
@@ -70,19 +81,38 @@ export function eksploder(v, x, y, radius, maksSkade, knockback, carve = true, d
     const dx = k.x - x, dy = k.y - y;
     if (dx * dx + dy * dy < radius * radius) {
       k.doed = true;
-      v.eksplosionsKoe.push({ x: k.x, y: k.y, radius: 50, skade: 35, knockback: 220, carve: true });
+      v.eksplosionsKoe.push({ x: k.x, y: k.y, radius: 50, skade: 35, knockback: 220, carve: true, kilde: ledDybere(kilde) });
     }
   }
+  // Farerne (sim/farer.js) reagerer først i deres eget skridt, i aktiv tid:
+  // her noteres kun skubbet og kilden (farer.saetKilde: den første vinder).
+  for (const f of v.farer || []) {
+    if (f.vaek) continue;
+    const fx = f.x - x, fy = f.y + f.hy - y;
+    const d = Math.max(0, Math.sqrt(fx * fx + fy * fy) - f.r);
+    if (d >= radius) continue;
+    const s = 1 - d / radius;
+    const n = normaliser(fx || 0.001, fy + radius * 0.35);
+    const r = f.ramt || (f.ramt = {});
+    r.skubX = (r.skubX || 0) + n.x * knockback * s;
+    r.skubY = (r.skubY || 0) + n.y * knockback * s;
+    r.antaend = true;
+    if (!r.kilde) { r.kilde = true; Object.assign(r, kildeFelter(kilde)); }
+  }
 
-  haendelser.push({ navn: 'eksplosion', x, y, radius });
+  const e = { navn: 'eksplosion', x, y, radius };
+  if (kilde) { Object.assign(e, ekstra); if (kilde.fare) e.fare = kilde.fare; }
+  haendelser.push(e);
   return haendelser;
 }
 
 /** DEN ene vej til skade. Et aktivt kraftfelt (Hjemmearbejde) blokerer alt,
  *  der kommer denne vej — eksplosion, stråle, klask, fald, klage og COVID —
  *  og melder 'skjoldBlok' i stedet for 'skade'. Drukning, at falde ud af
- *  banen, pludselig død og at opsige aftalen går uden om med vilje. */
-export function givSkade(v, b, skade, aarsag, haendelser) {
+ *  banen, pludselig død og at opsige aftalen går uden om med vilje.
+ *  ekstra: kæden (kildeFelter), som skade-hændelsen bærer; dør kunden af
+ *  den, husker den kæden (b.draebtAf), så ligets brag hører til den. */
+export function givSkade(v, b, skade, aarsag, haendelser, ekstra = null) {
   if (b.doed || skade <= 0) return;
   if (b.skjold) {
     haendelser.push({ navn: 'skjoldBlok', baever: b.id, x: b.x, y: b.y, skade, aarsag });
@@ -91,10 +121,14 @@ export function givSkade(v, b, skade, aarsag, haendelser) {
   b.hp -= skade;
   b.sidsteSkade = skade;
   v.skadeITur = true;
-  haendelser.push({ navn: 'skade', baever: b.id, skade, aarsag, x: b.x, y: b.y });
+  const e = { navn: 'skade', baever: b.id, skade, aarsag, x: b.x, y: b.y };
+  if (ekstra) Object.assign(e, kildeFelter(ekstra));
+  haendelser.push(e);
   if (b.hp <= 0) {
     b.hp = 0;
     b.doed = true;
+    e.drab = true;
+    if (ekstra) b.draebtAf = kildeFelter(ekstra);
     if (!v.doedskoe.includes(b.id)) v.doedskoe.push(b.id);
   }
 }
@@ -162,8 +196,9 @@ export function afvikleDoedsfald(v, haendelser) {
   let grav = null;
   if (!b.drukner) {
     // Kunden suges først ind i et sort hul (præsentation, ~1,3 s); så smælder det.
+    // Dræbt af en kæde: ligets brag er ét led dybere i den.
     v.eksplosionsKoe.push({ x: b.x, y: b.y + BAEVER_R, radius: 40, skade: 25, knockback: 180, carve: true,
-                            tick: v.tick + SORT_HUL_TICKS });
+                            tick: v.tick + SORT_HUL_TICKS, kilde: b.draebtAf ? ledDybere(b.draebtAf) : null });
     grav = { id: v.nytId(), type: 'gravsten', x: Math.round(b.x), y: Math.round(b.y),
              hold: b.hold, baever: b.id, navn: b.navn, alder: 0 };
     v.gravsten.push(grav);

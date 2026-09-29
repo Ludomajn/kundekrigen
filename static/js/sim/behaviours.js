@@ -15,6 +15,7 @@ import { eksploder, givSkade } from './damage.js';
 import { kapselFri } from './physics.js';
 import { FJELD } from './terrain.js';
 import { K } from './commands.js';
+import { foersteFare, FARE_STRAALE_TOL, ramt as ramtFare, saetKilde } from './farer.js';
 
 const MUNDING = 22;          // afstand fra skulderen til tonerkanonens munding
 const SKULDER = 15;          // skulderhøjde over fodpunktet (figur_view.js)
@@ -108,6 +109,7 @@ export function delKlynge(v, p) {
       detonation: barn.detonation,
       lunte: barn.lunte ? Math.round(barn.lunte * 60) : -1,
       ejer: p.ejer, ejerHold: p.ejerHold, sprite: barn.sprite,
+      kaedeId: p.kaedeId ?? p.id,
     }));
   }
   h.push({ navn: 'klyngeDelt', x: p.x, y: p.y, antal: kl.antal });
@@ -154,6 +156,18 @@ function foersteKunde(v, b, m, dx, dy, maks) {
   return { maal: bedst, d: bedstD };
 }
 
+/** Første fare langs strålen før terrænet og før den ramte kunde (kundeD,
+ *  eller null). Den præcise stråle først: når den rammer kunden før en fare,
+ *  får kunden skuddet. Tolerancen (FARE_STRAALE_TOL, for gæsternes
+ *  forsinkede billede af farerne) gælder kun, når strålen ikke rammer
+ *  nogen kunde. Ellers tog en fare, der ligger bag kunden, et rent træf. */
+function fareLangsStraale(v, b, m, dx, dy, raekkevidde, terraenD, kundeD, kun = null) {
+  const maks = Math.min(raekkevidde, terraenD);
+  const praecis = foersteFare(v, m, dx, dy, kundeD == null ? maks : Math.min(maks, kundeD), kun, 0);
+  if (praecis.fare || kundeD != null) return praecis;
+  return foersteFare(v, m, dx, dy, maks, kun, FARE_STRAALE_TOL, b);
+}
+
 function hitscan(v, b, w, m, h) {
   const hs = w.hitscan;
   for (let s = 0; s < (hs.skud || 1); s++) {
@@ -165,8 +179,18 @@ function hitscan(v, b, w, m, h) {
     const { maal: bedst, d: bedstD } = foersteKunde(v, b, m, dx, dy, hs.raekkevidde);
     const traef = v.terraen.straale(m.x, m.y, dx, dy, hs.raekkevidde, 2);
     const terraenD = traef ? traef.afstand : Infinity;
+    // En fare (sim/farer.js) foran både kunden og terrænet: scanneren
+    // antænder den — eller leverer dronens pakke til skyttens klinik.
+    const { fare, d: fareD } = fareLangsStraale(v, b, m, dx, dy, hs.raekkevidde, terraenD,
+                                                bedst && bedstD <= terraenD ? bedstD : null);
 
-    if (bedst && bedstD <= terraenD) {
+    if (fare) {
+      const r = ramtFare(fare);
+      r.straale = true;
+      saetKilde(r, { kaede: 0, kaedeId: -v.tick, kildeHold: b.hold, kildeBaever: b.id });
+      h.push({ navn: 'straale', x0: m.x, y0: m.y, x1: m.x + dx * fareD, y1: m.y + dy * fareD, traf: true,
+               vaaben: w.id, fare: fare.id });
+    } else if (bedst && bedstD <= terraenD) {
       // Strålen ender dér, hvor den faktisk ramte — ikke ved fødderne.
       const x1 = m.x + dx * bedstD, y1 = m.y + dy * bedstD;
       h.push({ navn: 'straale', x0: m.x, y0: m.y, x1, y1, traf: true,
@@ -201,8 +225,17 @@ function straale(v, b, w, m, h) {
   const { maal, d } = foersteKunde(v, b, m, dx, dy, st.raekkevidde);
   const traef = v.terraen.straale(m.x, m.y, dx, dy, st.raekkevidde, 2);
   const terraenD = traef ? traef.afstand : Infinity;
+  // Robotstøvsugeren kan også tvangsopdateres: pause i 300 tick (sim/farer.js).
+  const { fare, d: fareD } = fareLangsStraale(v, b, m, dx, dy, st.raekkevidde, terraenD,
+                                              maal && d <= terraenD ? d : null, 'stoevsuger');
 
-  if (maal && d <= terraenD) {
+  if (fare) {
+    const r = ramtFare(fare);
+    r.opdatering = true;
+    saetKilde(r, { kaede: 0, kaedeId: -v.tick, kildeHold: b.hold, kildeBaever: b.id });
+    h.push({ navn: 'straale', x0: m.x, y0: m.y, x1: m.x + dx * fareD, y1: m.y + dy * fareD, traf: true,
+             vaaben: w.id, fare: fare.id });
+  } else if (maal && d <= terraenD) {
     const x1 = m.x + dx * d, y1 = m.y + dy * d;
     h.push({ navn: 'straale', x0: m.x, y0: m.y, x1, y1, traf: true, vaaben: w.id, baever: maal.id });
     if (maal.hold !== b.hold) {
@@ -262,7 +295,17 @@ function klask(v, b, nk, retning, h) {
     maal.paaJorden = false;
     maal.faldFra = maal.y;
   }
-  h.push({ navn: 'klask', baever: b.id, maal: ramt, x: cx, y: cy, retning });
+  // Kabelsalaten slås væk, støvsugeren vender (sim/farer.js). Dronen flyver for højt.
+  const farer = [];
+  for (const f of v.farer || []) {
+    if (f.vaek || f.slags === 'drone') continue;
+    if (Math.abs(f.x - cx) > nk.raekkevidde * 0.5 + f.r || Math.abs(f.y + f.hy - cy) > nk.hoejde) continue;
+    const r = ramtFare(f);
+    r.klask = retning;
+    saetKilde(r, { kaede: 0, kaedeId: -v.tick, kildeHold: b.hold, kildeBaever: b.id });
+    farer.push(f.id);
+  }
+  h.push({ navn: 'klask', baever: b.id, maal: ramt, x: cx, y: cy, retning, farer });
 }
 
 // ---------------------------------------------------------------- placeret

@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" width="16" height="16">
+  <!-- Kundekrigen HP-bjælke: 9-slice-ramme (border-image-slice: 5; border-width: 5px ved 26 px, 4px ved 15 px).
+       Synlig kant 2 px mørk + 1 px lys glans foroven. Ingen tekst og ingen holdfarver; midten er gennemsigtig. -->
+  <rect x="1" y="1" width="14" height="14" rx="3.2" fill="none" stroke="#0B0F12" stroke-width="2"/>
+  <path d="M3.6 2.6H12.4" stroke="#FFFFFF" stroke-opacity=".28" stroke-width="1" stroke-linecap="round"/>
+</svg>

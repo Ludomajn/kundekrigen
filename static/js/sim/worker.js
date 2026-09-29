@@ -28,6 +28,9 @@ const VIDERESEND = new Set([
   'fuldtraeffer', 'telefonRinger', 'telefonOpkald', 'pillerDukketOp', 'printerSprang',
   // Rundens hændelser (sim/haendelser.js): et skud afvist af internetnedbruddet.
   'skudAfvist',
+  // Farer i realtid (sim/farer.js, docs/farer.md).
+  'fareVarsel', 'fareKommer', 'fareAntaendt', 'fareLeveret', 'fareSpiste', 'fareOpdateres', 'fareVaek',
+  'ildTaendt',
 ]);
 
 let verden = null;

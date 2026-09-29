@@ -14,8 +14,9 @@ import { HOLD, HOLD_ORDEN, holdFarve } from '../render/palette.js';
 import { VAABEN } from '../sim/weapons.js';
 import { FAVORIT_LABELS, ANTAL_FAVORITTER } from './keyboard.js';
 import { ikonHTML } from './vaabenikoner.js';
-import { MAKS_HP } from '../sim/entities.js';
 import { HZ } from '../core/tick.js';
+import { VEJLEDNING_LOFT } from '../sim/turn.js';
+import { tbjHTML, tbjRefs, saetTbj, saetTbjRamt, kortNavn, hentTbjGrafik, LAV_HP } from './tbj.js';
 
 /* Navneskiltet sidder 12 wu over hovedet (figuren er 46) plus 8 px: så ser
  * afstanden til hovedet ens ud ved alle zoomtrin. De gamle 74 wu gav 66 px
@@ -23,9 +24,9 @@ import { HZ } from '../core/tick.js';
 export const ETIKET_WU = 58, ETIKET_PX = 8;
 /* Skade- og helbredstallene popper op OVER skiltet, ikke hen over navnet og
  * HP, mens skiltet ryster og tæller ned. Skiltets højde læses, når det
- * findes; ellers ~20 px (10,5 px Poppins + polstring). Luften dækker den gule
- * ring om den aktive kunde (2,5 + 2 px) og tallets pop (skala 1,25), der når
- * lidt under tallets eget anker. */
+ * findes; ellers 20 px (tålmodighedsbjælken ved --ui 1). Luften dækker den
+ * gule ring om den aktive kunde (2 + 2 px) og tallets pop (skala 1,25), der
+ * når lidt under tallets eget anker. */
 export const ETIKET_HOEJDE = 20, TAL_LUFT = 6;
 
 /** Skærm-y for et skade- eller helbredstals anker (dets underkant før
@@ -55,6 +56,25 @@ function statusIkoner(x) {
          (x.springOver ? statusIkon('opdaterer', T.spil.status.springOver) : '') +
          (x.smittet > 0 ? statusIkon('smittet', T.spil.status.smittet) : '');
 }
+/** Statusikonerne som et tal, så nøglerne kan sammenlignes uden strenge. */
+const statusBits = (x) => (x.doed ? 0 : (x.skjold ? 1 : 0) | (x.springOver ? 2 : 0) | (x.smittet > 0 ? 4 : 0));
+/** Næste COVID-tik vises i bjælken (kraftfeltet blokerer det, damage.js givSkade). */
+const smitteVises = (x) => !x.doed && x.smittet > 0 && !x.skjold;
+
+/* Skiltets klasser som en bitmaske: kun de bits, der skifter, rører DOM'en. */
+const K_RAMT = 1, K_AKTIV = 2, K_EGEN = 4, K_LAV = 8, K_DOED = 16, K_UDE = 32;
+const KLASSER = [[K_RAMT, 'ramt'], [K_AKTIV, 'aktiv'], [K_EGEN, 'egen'], [K_LAV, 'lav'], [K_DOED, 'doed'], [K_UDE, 'ude']];
+function saetKlasser(n, k) {
+  const d = k ^ n._k;
+  n._k = k;
+  for (let i = 0; i < KLASSER.length; i++) {
+    if (d & KLASSER[i][0]) n.classList.toggle(KLASSER[i][1], (k & KLASSER[i][0]) !== 0);
+  }
+}
+/* En død kundes skilt står, til tallet er talt ned til 0, og toner så ud
+ * (app.css .etiket.ude, 600 ms) og fjernes. SYN_KANT: halvdelen af det
+ * bredeste skilt ved --ui 1,5 (132 · 1,5 / 2 = 99 px) plus luft. */
+const UD_MS = 650, SYN_KANT = 120;
 
 export function lavHud(rod, r) {
   rod.innerHTML = `
@@ -62,6 +82,7 @@ export function lavHud(rod, r) {
       <div class="hud-aktiv" id="hudAktiv"></div>
       <div class="hud-ure">
         <div class="tururet num" id="hudTur">30</div>
+        <div class="ur-venter hide" id="hudVenter"><span class="uv-tekst">Uret venter</span><span class="uv-bar"><i></i></span></div>
         <div class="kamptid num" id="hudKamp">30:00</div>
         <div class="sudden hide" id="hudSudden">${T.spil.pludseligDoed}</div>
       </div>
@@ -99,12 +120,61 @@ export function lavHud(rod, r) {
     banner: $('hudBanner'), net: $('hudNet'), arsenal: $('hudArsenal'), arsenalAntal: $('hudArsenalAntal'),
   };
 
+  // Uret venter på vejledningen (simulationens kvote, deltaens vj) — for alle.
+  const venter = $('hudVenter'), venterBar = venter.querySelector('i');
+  let sidsteVenter = -1;
+
   const etiketPulje = new Map();
   // Den tålmodighed, der VISES. Skaden holdes tilbage, til skuddet er
   // afviklet, og tælles så ned (main.js styrer det); indtil da er det b.hp.
   let visHp = (b) => b.hp;
+  // Bjælkens fyld: det, der er TILBAGE, når nedtællingen er i gang (fyldet
+  // falder straks, det tabte løber ned med tallet); ellers det viste tal.
+  let fyldHp = (b) => visHp(b);
   const ramte = new Set();
-  let sidsteVaaben = null, sidsteVind = null, sidsteHoldSignatur = '';
+  let sidsteVaaben = null, sidsteVind = null;
+  // Genbruges hver frame: skiltenes skærmpladser. Skiltene, der er med,
+  // stemples med framens nummer (ingen Set, der skal ryddes og fyldes).
+  const maal = [];
+  let etiketRamme = 0;
+  // Den aktive øverst og holdlisten bygges kun om, når deres nøgle skifter;
+  // tallene og bjælkerne skrives på stedet (saetTbj skriver kun ændringer).
+  const ak = { id: NaN, din: false, st: -1, navn: null, t: null, tekst: null };
+  const holdSig = { n: -1, akt: NaN, holdIdx: NaN, pid: null, k: [], navn: [] };
+  const holdRader = new Map();
+  const holdTotal = [];                 // [{ hid, n, s }]
+  let sidsteTurTal = NaN, sidsteKampSek = NaN;
+
+  hentTbjGrafik();
+
+  function lavEtiket(b) {
+    const n = document.createElement('div');
+    n.className = 'etiket';
+    n._k = 0; n._synlig = null; n._ude = 0; n._navn = null; n._x = NaN; n._y = NaN;
+    saetEtiketNavn(n, b);
+    el.etiketter.appendChild(n);
+    etiketPulje.set(b.id, n);
+    return n;
+  }
+  function saetEtiketNavn(n, b) {
+    n._navn = b.navn;
+    n.innerHTML = tbjHTML(holdFarve(b.hold), kortNavn(b.navn));
+    n._t = tbjRefs(n.firstElementChild);
+  }
+
+  /** Holdlistens nøgle uden strenge: hvem, død (talt ned), status, aktiv. */
+  function holdAendret(v, egenPid) {
+    const L = v.baevere;
+    let aendret = L.length !== holdSig.n || v.tur.baeverId !== holdSig.akt ||
+                  v.tur.holdIdx !== holdSig.holdIdx || egenPid !== holdSig.pid;
+    holdSig.n = L.length; holdSig.akt = v.tur.baeverId; holdSig.holdIdx = v.tur.holdIdx; holdSig.pid = egenPid;
+    for (let i = 0; i < L.length; i++) {
+      const x = L[i];
+      const k = x.id * 16 + (x.doed && visHp(x) <= 0 ? 8 : 0) + statusBits(x);
+      if (holdSig.k[i] !== k || holdSig.navn[i] !== x.navn) { holdSig.k[i] = k; holdSig.navn[i] = x.navn; aendret = true; }
+    }
+    return aendret;
+  }
 
   // --- våbenbjælken: altid ti pladser (1–0), også når nogle er tomme, så
   // tallene står fast. pladser[i] = { id, knap, ammo } — id er null for et hul.
@@ -211,6 +281,12 @@ export function lavHud(rod, r) {
      *  tilskuer og ser kun, hvad den aktive har i hånden — ikke en
      *  våbenbjælke, man alligevel ikke kan bruge. */
     opdater(v, egenPid, tilstandTekst, oplader = false, kraft = 0, minTur = true) {
+      // Skiltene først: tilSkaerm læser lærredets størrelse (renderer.js), og
+      // det skal ske, før HUD'en skriver i denne frame (ellers en tvungen,
+      // synkron layoutberegning hver frame).
+      v.egenPid = egenPid;
+      this.opdaterEtiketter(v, r);
+
       const b = v.aktivBaever();
       el.bund.classList.toggle('tilskuer', !minTur);
       // Også på roden: arsenalskuffen (#panel) er en søster til #hud og skjules
@@ -218,33 +294,54 @@ export function lavHud(rod, r) {
       rod.classList.toggle('hud-tilskuer', !minTur);
       const hold = b ? holdFarve(b.hold) : null;
 
-      // --- aktiv bæver
+      // --- aktiv kunde (WoW's target frame): bjælken med det fulde navn, og
+      // under den DIN TUR og statusikonerne. Bygges kun, når kunden, DIN TUR,
+      // status eller navnet skifter; tallene skrives på stedet.
       if (b) {
-        const dinTur = egenPid && (b.ejer === egenPid || v.pidPaaHold?.(egenPid, b.hold));
-        el.aktiv.className = `hud-aktiv ${dinTur ? 'dinTur' : ''}`;
-        el.aktiv.innerHTML = `
-          <span class="holdprik" style="background:${hold.css}"></span>
-          <span class="aktivnavn">${esc(b.navn)}</span>
-          ${dinTur ? `<span class="dintur-mark" style="background:${hold.css};color:${hold.tekst}">DIN TUR</span>` : ''}
-          <span class="hpbar"><i style="width:${Math.min(100, Math.max(0, visHp(b)))}%;background:${hold.css}"></i></span>
-          <span class="hptal num">${visHp(b)}</span>`;
+        const dinTur = !!(egenPid && (b.ejer === egenPid || v.pidPaaHold?.(egenPid, b.hold)));
+        const st = statusBits(b);
+        if (!ak.t || b.id !== ak.id || dinTur !== ak.din || st !== ak.st || b.navn !== ak.navn) {
+          ak.id = b.id; ak.din = dinTur; ak.st = st; ak.navn = b.navn; ak.tekst = null;
+          el.aktiv.className = `hud-aktiv${dinTur ? ' dinTur' : ''}`;
+          const ik = statusIkoner(b);
+          const under = (dinTur ? `<span class="dintur-mark" style="background:${hold.css};color:${hold.tekst}">DIN TUR</span>` : '') +
+                        (ik ? `<span class="hb-status">${ik}</span>` : '');
+          el.aktiv.innerHTML = tbjHTML(hold, b.navn, 'tbj--aktiv') + (under ? `<div class="ak-under">${under}</div>` : '');
+          ak.t = tbjRefs(el.aktiv.firstElementChild);
+        }
+        saetTbj(ak.t, visHp(b), b.doed ? 0 : fyldHp(b), smitteVises(b));
+        saetTbjRamt(ak.t, ramte.has(b.id));
       } else {
-        el.aktiv.textContent = tilstandTekst || T.spil.venter;
+        const t = tilstandTekst || T.spil.venter;
+        if (ak.t || ak.tekst !== t) {
+          ak.t = null; ak.tekst = t;
+          el.aktiv.className = 'hud-aktiv';
+          el.aktiv.textContent = t;
+        }
       }
 
-      // --- ure
+      // --- ure (skrives kun, når sekundet skifter)
       const iTilbagetog = v.tur.retreatTil !== null && v.tick < v.tur.retreatTil &&
                           v.tur.tilstand === 'oploesning';
-      if (iTilbagetog) {
-        el.tur.textContent = Math.ceil((v.tur.retreatTil - v.tick) / HZ);
-        el.tur.classList.add('tilbagetog');
-      } else {
-        el.tur.textContent = Math.max(0, Math.ceil(v.tur.tickTilbage / HZ));
-        el.tur.classList.remove('tilbagetog');
+      const turTal = iTilbagetog ? -Math.ceil((v.tur.retreatTil - v.tick) / HZ)
+                                 : Math.max(0, Math.ceil(v.tur.tickTilbage / HZ));
+      if (turTal !== sidsteTurTal) {
+        sidsteTurTal = turTal;
+        el.tur.textContent = Math.abs(turTal);
+        el.tur.classList.toggle('tilbagetog', iTilbagetog);
       }
-      const kampTilbage = Math.max(0, v.cfg.kampTicks - v.tick) / HZ;
-      el.kamp.textContent = mmss(kampTilbage);
+      const kampSek = Math.ceil(Math.max(0, v.cfg.kampTicks - v.tick) / HZ);
+      if (kampSek !== sidsteKampSek) { sidsteKampSek = kampSek; el.kamp.textContent = mmss(kampSek); }
       el.sudden.classList.toggle('hide', !v.pludseligDoed);
+      // Kvoten er et ur: en bjælke, der løber ned, og tallet dæmpes imens.
+      const vjRest = v.tur.tilstand === 'spiller_aktiv' ? v.tur.vejledningRest | 0 : 0;
+      const vjPct = vjRest > 0 ? Math.ceil((100 * vjRest) / VEJLEDNING_LOFT) : 0;
+      if (vjPct !== sidsteVenter) {
+        sidsteVenter = vjPct;
+        venter.classList.toggle('hide', vjPct === 0);
+        el.tur.classList.toggle('venter', vjPct > 0);
+        venterBar.style.width = `${vjPct}%`;
+      }
 
       // --- vind. Tallet og retningen bærer betydningen; farven er kun en
       // redundant markør, så den aldrig står alene. Vi viser den EFFEKTIVE
@@ -271,11 +368,10 @@ export function lavHud(rod, r) {
       //      handler om lige nu.
       //   2. MINE bævere skal være til at finde uden at lede.
       //   3. Alle andre er kontekst.
-      const sig = v.baevere.map((x) => `${x.id}:${visHp(x)}:${x.doed && visHp(x) <= 0 ? 1 : 0}` +
-                                       `:${x.skjold ? 1 : 0}${x.springOver ? 1 : 0}${x.smittet > 0 ? 1 : 0}`).join(',')
-                + `|${v.tur.baeverId}|${egenPid}`;
-      if (sig !== sidsteHoldSignatur) {
-        sidsteHoldSignatur = sig;
+      // Rækkerne er raid frames: bjælke med navn og tal indeni. Listen bygges
+      // kun om, når nogen dør (talt ned), får status eller turen skifter;
+      // tallene tælles ned på stedet.
+      if (holdAendret(v, egenPid)) {
         const grupper = new Map();
         for (const x of v.baevere) {
           if (!grupper.has(x.hold)) grupper.set(x.hold, []);
@@ -286,8 +382,8 @@ export function lavHud(rod, r) {
           .sort((a, b) => a[0] - b[0])
           .map(([hid, liste]) => {
             const f = holdFarve(hid);
-            const levende = liste.filter((x) => !x.doed).length;
-            const total = liste.reduce((s, x) => s + Math.max(0, visHp(x)), 0);
+            const talt = (x) => x.doed && visHp(x) <= 0;           // død OG talt ned
+            const levende = liste.filter((x) => !talt(x)).length;
             const aktivtHold = v.tur.holdIdx === hid;
             const mitHold = liste.some(mit);
             return `<div class="holdkort ${aktivtHold ? 'aktivt' : ''} ${mitHold ? 'mit' : ''}"
@@ -297,20 +393,37 @@ export function lavHud(rod, r) {
                 <span class="hn-tekst">${esc(f.navn)}</span>
                 ${mitHold ? '<span class="hn-dig">DIG</span>' : ''}
                 <span class="hn-tal num">${levende}<i>/${liste.length}</i></span>
-                <span class="hn-hp num">${total}</span>
+                <span class="hn-hp num" data-hold="${hid}"></span>
               </div>
               ${liste.map((x) => {
                 const erAktiv = x.id === v.tur.baeverId && !x.doed;
-                return `<div class="hbaever ${x.doed ? 'doed' : ''} ${erAktiv ? 'aktiv' : ''} ${mit(x) ? 'egen' : ''}">
+                return `<div class="hbaever ${talt(x) ? 'doed' : ''} ${erAktiv ? 'aktiv' : ''} ${mit(x) ? 'egen' : ''}" data-id="${x.id}">
                   <span class="hb-markoer">${erAktiv ? '<svg viewBox="0 0 64 40"><use href="#i-arrow"/></svg>' : ''}</span>
-                  <span class="hbnavn">${esc(x.navn)}</span>
+                  ${tbjHTML(f, kortNavn(x.navn), 'tbj--hold')}
                   <span class="hb-status">${statusIkoner(x)}</span>
-                  <span class="hbbar"><i style="width:${Math.min(100, Math.max(0, visHp(x)))}%"></i></span>
-                  <span class="hb-hp num">${Math.max(0, visHp(x))}</span>
                 </div>`;
               }).join('')}
             </div>`;
           }).join('');
+        holdRader.clear();
+        holdTotal.length = 0;
+        for (const rk of el.hold.querySelectorAll('.hbaever')) holdRader.set(+rk.dataset.id, tbjRefs(rk.querySelector('.tbj')));
+        for (const n of el.hold.querySelectorAll('.hn-hp')) holdTotal.push({ hid: +n.dataset.hold, n, s: NaN });
+      }
+      for (let i = 0; i < v.baevere.length; i++) {
+        const x = v.baevere[i], t = holdRader.get(x.id);
+        if (!t) continue;
+        saetTbj(t, visHp(x), x.doed ? 0 : fyldHp(x), smitteVises(x));
+        saetTbjRamt(t, ramte.has(x.id));
+      }
+      for (let j = 0; j < holdTotal.length; j++) {
+        const h = holdTotal[j];
+        let s = 0;
+        for (let i = 0; i < v.baevere.length; i++) {
+          const x = v.baevere[i];
+          if (x.hold === h.hid) { const hp = visHp(x); if (hp > 0) s += hp; }
+        }
+        if (s !== h.s) { h.s = s; h.n.textContent = s; }
       }
 
       // --- våben
@@ -341,54 +454,68 @@ export function lavHud(rod, r) {
       // og ikke først når værtens tilstand er nået hjem igen.
       el.kraft.classList.toggle('hide', !oplader);
       if (oplader) el.kraft.firstElementChild.style.width = `${(kraft * 100).toFixed(0)}%`;
-
-      v.egenPid = egenPid;
-      this.opdaterEtiketter(v, r);
     },
 
-    /** Flydende navne- og HP-etiketter. Alle læsninger først, så alle
-     *  skrivninger — og transform, aldrig left/top. */
+    /** Skiltene over kunderne: tålmodighedsbjælken med kaldenavn og tal.
+     *  Alle læsninger først (tilSkaerm, vinduet), så alle skrivninger — og
+     *  transform, aldrig left/top. I ro skrives intet: pladsen, lagene og
+     *  klasserne caches på skiltet og skrives kun, når de ændrer sig. */
     opdaterEtiketter(v, r) {
-      const set = new Set();
-      const maal = [];
-      for (const b of v.baevere) {
-        if (b.doed) continue;
-        set.add(b.id);
-        const x = b.x, y = b.y;           // samme interpolerede position som figuren
-        maal.push({ b, p: r.tilSkaerm(x, y + ETIKET_WU) });   // se ETIKET_WU
-      }
-      for (const { b, p } of maal) {
-        let n = etiketPulje.get(b.id);
-        if (!n) {
-          n = document.createElement('div');
-          n.className = 'etiket';
-          const f = holdFarve(b.hold);
-          n.style.background = f.css;
-          n.style.color = f.tekst;
-          n.innerHTML = `<span class="enavn"></span><span class="ehp num"></span>`;
-          el.etiketter.appendChild(n);
-          etiketPulje.set(b.id, n);
+      const nu = performance.now(), W = window.innerWidth, H = window.innerHeight;
+      const ramme = ++etiketRamme;
+      let m = 0;
+      for (let i = 0; i < v.baevere.length; i++) {
+        const b = v.baevere[i];
+        const vist = visHp(b);
+        if (b.doed && vist <= 0) {
+          // Talt ned til 0: skiltet toner ud og fjernes. En kunde, der
+          // allerede var død (fx i et snapshot), får aldrig et skilt.
+          const n = etiketPulje.get(b.id);
+          if (!n) continue;
+          if (!n._ude) n._ude = nu;
+          if (nu - n._ude > UD_MS) continue;
         }
-        const synlig = p.x > -80 && p.y > -40 &&
-                       p.x < window.innerWidth + 80 && p.y < window.innerHeight + 40;
-        n.style.visibility = synlig ? 'visible' : 'hidden';
-        if (!synlig) continue;
-        n.style.transform = `translate3d(${p.x | 0}px, ${(p.y - ETIKET_PX) | 0}px, 0) translate(-50%, -100%)`;
-        const nv = n.firstElementChild, hp = n.lastElementChild;
-        if (nv.textContent !== b.navn) nv.textContent = b.navn;
-        const s = String(Math.max(0, visHp(b)));
-        if (hp.textContent !== s) hp.textContent = s;
-        n.classList.toggle('ramt', ramte.has(b.id));
-        n.classList.toggle('aktiv', b.id === v.tur.baeverId);
-        n.classList.toggle('egen', !!(v.egenPid && (b.ejer === v.egenPid ||
-                                       v.pidPaaHold?.(v.egenPid, b.hold))));
+        const x = b.x, y = b.y;           // samme interpolerede position som figuren
+        const p = r.tilSkaerm(x, y + ETIKET_WU);   // se ETIKET_WU
+        const s = maal[m] || (maal[m] = { b: null, x: 0, y: 0, vist: 0 });
+        s.b = b; s.x = p.x; s.y = p.y; s.vist = vist; m++;
       }
-      for (const [id, n] of etiketPulje) {
-        if (!set.has(id)) { n.remove(); etiketPulje.delete(id); }
+      const egen = v.egenPid;
+      for (let i = 0; i < m; i++) {
+        const s = maal[i], b = s.b;
+        s.b = null;
+        const n = etiketPulje.get(b.id) || lavEtiket(b);
+        n._ramme = ramme;
+        const synlig = s.x > -SYN_KANT && s.y > -40 && s.x < W + SYN_KANT && s.y < H + 40;
+        if (synlig !== n._synlig) { n._synlig = synlig; n.style.visibility = synlig ? 'visible' : 'hidden'; }
+        if (!synlig) continue;
+        const px = s.x | 0, py = (s.y - ETIKET_PX) | 0;
+        if (px !== n._x || py !== n._y) {
+          n._x = px; n._y = py;
+          n.style.transform = `translate3d(${px}px, ${py}px, 0) translate(-50%, -100%)`;
+        }
+        if (n._navn !== b.navn) saetEtiketNavn(n, b);
+        const lever = !b.doed;
+        saetTbj(n._t, s.vist, lever ? fyldHp(b) : 0, smitteVises(b));
+        const k = (ramte.has(b.id) ? K_RAMT : 0) |
+                  (lever && b.id === v.tur.baeverId ? K_AKTIV : 0) |
+                  (lever && egen && (b.ejer === egen || v.pidPaaHold?.(egen, b.hold)) ? K_EGEN : 0) |
+                  (lever && s.vist > 0 && s.vist <= LAV_HP ? K_LAV : 0) |
+                  (lever ? 0 : K_DOED) | (n._ude ? K_UDE : 0);
+        if (k !== n._k) saetKlasser(n, k);
+      }
+      // Hvert skilt, der er med, er stemplet med denne frame; kun et
+      // overskud (døde, talt ned og tonet ud) skal findes og fjernes.
+      if (etiketPulje.size > m) {
+        for (const [id, n] of etiketPulje) {
+          if (n._ramme !== ramme) { n.remove(); etiketPulje.delete(id); }
+        }
       }
     },
 
     saetVisHp(fn) { visHp = fn; },
+    /** Bjælkens fyld under nedtællingen (main.js: det, tallet ender på). */
+    saetFyldHp(fn) { fyldHp = fn; },
     /** Etiketten ryster og lyser rødt, mens tallet tæller ned. */
     markerRamt(id, paa) { if (paa) ramte.add(id); else ramte.delete(id); },
 
@@ -446,9 +573,12 @@ export function lavHud(rod, r) {
       n.className = 'skadetal plus num';
       n.textContent = `+${tal}`;
       n.style.left = `${p.x | 0}px`;
-      n.style.top = `${talAnker(p.y, etiketPulje.get(b.id)?.offsetHeight) | 0}px`;   // over skiltet
+      const e = etiketPulje.get(b.id);
+      n.style.top = `${talAnker(p.y, e?.offsetHeight) | 0}px`;   // over skiltet
       el.etiketter.appendChild(n);
       setTimeout(() => n.remove(), 1700);
+      // Fyldet blinker (sjældent, så den genstartede animation er billig).
+      if (e) { e.classList.remove('helbredt'); void e.offsetWidth; e.classList.add('helbredt'); }
     },
 
     /** Skaden popper op over kunden som et rødt tal. */
@@ -498,6 +628,9 @@ export function lavHud(rod, r) {
       el.net.classList.toggle('hide', !vis || !tekst);
     },
 
-    ryd() { bundMaaler?.disconnect(); rod.innerHTML = ''; etiketPulje.clear(); },
+    ryd() {
+      bundMaaler?.disconnect(); rod.innerHTML = ''; etiketPulje.clear();
+      holdRader.clear(); holdTotal.length = 0; holdSig.n = -1; ak.t = null; ak.tekst = null;
+    },
   };
 }

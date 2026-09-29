@@ -16,9 +16,11 @@ export const K = {
 };
 
 /* 'panel' {aaben}: våbenskuffen er åben i spillerens egen tur. Uret står så
- * stille — højst PANEL_PAUSE_LOFT tick pr. tur (turn.js). */
+ * stille — højst PANEL_PAUSE_LOFT tick pr. tur (turn.js).
+ * 'vejledning' {aktiv}: vejledningen står i spillerens egen tur. Uret venter —
+ * højst VEJLEDNING_LOFT tick pr. kundeejer pr. kamp (turn.js). */
 export const HANDLINGER = new Set([
-  'vaelgVaaben', 'affyr', 'markoer', 'lunte', 'staaOver', 'retning', 'panel',
+  'vaelgVaaben', 'affyr', 'markoer', 'lunte', 'staaOver', 'retning', 'panel', 'vejledning',
 ]);
 
 export function holdKommando(seq, bitmaske) {
@@ -54,6 +56,7 @@ export function valider(v, cmd, pid) {
   }
   if (cmd.k === 'handling') {
     if (!HANDLINGER.has(cmd.h)) return { ok: false, fejl: 'ukendt handling' };
+    if (cmd.h === 'vejledning' && typeof cmd.aktiv !== 'boolean') return { ok: false, fejl: 'ugyldig vejledning' };
     if (cmd.h === 'affyr') {
       if (!v.accepterAffyring()) return { ok: false, fejl: 'kan ikke affyre nu' };
       const kr = cmd.kraft;

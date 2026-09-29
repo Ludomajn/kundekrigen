@@ -29,6 +29,10 @@ const GRUPPER = {
   vaaben_samlet: 2, kasse_falder: 1, piller: 1, skade: 3, klask_ramt: 1, covid_host: 2,
   covid_sky: 1, plask: 1, sort_hul: 1, klik: 2, tael: 3, oplad: 1, fuld_kraft: 1,
   intro_slam: 1, nedtael: 2, kamp_start: 1, du_vandt: 1, tabt: 1, inferno_delt: 1,
+  // Farerne i realtid (ui/farer.js): varslerne, antændelsen, alarmen, NOM og
+  // ildens knitren (en løkke, der tier, når noget andet lyder).
+  fare_kabelsalat: 2, fare_nullermand: 2, fare_drone: 1, fare_stoevsuger: 1, kortslutning: 2,
+  stoevsuger_alarm: 1, nom: 2, ild: 1,
 };
 // Gruppernes egen lydstyrke, målt af værktøjet, så de sidder godt sammen
 // (fodtrin og tik svagt, slag og fald kraftigt). Kaldets vol ganges på.
@@ -42,6 +46,8 @@ const GRUPPE_VOL = {
   covid_sky: 0.38, plask: 0.82, sort_hul: 0.32, klik: 0.47, tael: 0.3, oplad: 0.3,
   fuld_kraft: 0.3, intro_slam: 0.92, nedtael: 0.56, kamp_start: 0.3, du_vandt: 0.39,
   tabt: 0.71, inferno_delt: 0.77,
+  fare_kabelsalat: 0.5, fare_nullermand: 0.39, fare_drone: 0.34, fare_stoevsuger: 0.37,
+  kortslutning: 0.95, stoevsuger_alarm: 0.3, nom: 0.73, ild: 0.47,
 };
 const sidstValgt = new Map();
 
@@ -73,7 +79,10 @@ let master = null;
 const buffere = new Map();
 let hentet = null;
 let volumen = 0.7;
-let lydFra = false;                  // mute — se saetLydFra
+// /?stille: helt lydløst (musik og effekter), til udviklerens tests i
+// browseren. Kan ikke slås til igen med M eller profilen, og intet gemmes.
+const STILLE = (() => { try { return new URLSearchParams(location.search).has('stille'); } catch { return false; } })();
+let lydFra = STILLE;                 // mute — se saetLydFra
 
 function sikrKontekst() {
   if (ctx) return ctx;
@@ -103,9 +112,10 @@ function indlaes() {
 
 /** Hent ekstra lyde, som ikke står i NAVNE — fx filmintroens replikker, som
  *  art directoren nævner i grafik/intro/intro.json. Kun navne af formen
- *  stemme_… eller k_…, og kun én gang hver. */
+ *  stemme_… eller k_…, og kun én gang hver. valgfri: en lyd, der endnu ikke
+ *  er optaget (ui/stemmer.js SPEAKER_SENERE), må mangle uden en advarsel. */
 const ekstra = new Set();
-export function hentLyde(navne) {
+export function hentLyde(navne, { valgfri = false } = {}) {
   const nye = (navne || []).filter((n) => typeof n === 'string' && /^(stemme|k)_[a-z0-9_]+$/.test(n) &&
                                           !NAVNE.includes(n) && !ekstra.has(n));
   if (!nye.length) return;
@@ -117,7 +127,7 @@ export function hentLyde(navne) {
         .then((r) => (r.ok ? r.arrayBuffer() : Promise.reject(new Error(r.status))))
         .then((b) => ctx.decodeAudioData(b))
         .then((buf) => buffere.set(navn, buf))
-        .catch(() => console.warn('[lyd] mangler', navn));
+        .catch(() => { if (!valgfri) console.warn('[lyd] mangler', navn); });
     }
   };
   // Vent på de almindelige lyde (og brugerhandlingen), så de ikke deles om linjen.
@@ -212,6 +222,7 @@ function spil(navn, { vol = 1, tone = 1, maksSek = 0, stemme = false, pan = 0, v
   kilde.connect(g);
   if (p) { g.connect(p); p.connect(master); } else g.connect(master);
   kilde.start();
+  tagUdtoning();                     // en løkke, der toner ud, klinger ikke under lyden
   let varighed = b.duration / tone;
   // maksSek: lange lyde (faxen, telefonen) tones ud i stedet for at køre til ende.
   if (maksSek && varighed > maksSek) {
@@ -374,24 +385,51 @@ export function stopStemme() {
 
 export const talerNogen = () => !kanalFri();
 
+/** Findes lyden (en gruppe: dens første variant)? afspil og stemme giver
+ *  false både for "mangler" og for "optaget", så ui/farer.js spørger her. */
+export function har(navn) {
+  return buffere.has(GRUPPER[navn] ? `k_${navn}_1` : navn);
+}
+
 /* Løkker (gang, ambience): én kørende kilde per navn, tændes og slukkes. */
 const loekker = new Map();
 
+/* Løkker, der er ved at tone ud (loop(navn, false)): en ny lyd i kanalen tager
+ * halen som ved forrang (40 ms), så den aldrig klinger under lyden — fx ildens
+ * knitren, der slukkes i samme øjeblik, som bjælkens tal tikker. */
+const udtoner = new Set();
+function tagUdtoning() {
+  if (!udtoner.size) return;
+  const t = ctx.currentTime;
+  for (const l of udtoner) {
+    try {
+      l.gain.gain.cancelScheduledValues(t);
+      l.gain.gain.setValueAtTime(l.gain.gain.value, t);
+      l.gain.gain.linearRampToValueAtTime(0, t + 0.04);
+      l.kilde.stop(t + 0.05);
+    } catch { /* allerede stoppet */ }
+  }
+  udtoner.clear();
+}
+
 export function loop(navn, til, vol = 1) {
   vol *= GRUPPE_VOL[navn] ?? 1;
-  if (navn !== 'ambience' && ctx && !kanalFri()) vol = 0;      // én lyd ad gangen
+  const optaget = navn !== 'ambience' && ctx && !kanalFri();
+  if (optaget) vol = 0;                                        // én lyd ad gangen
   const koerer = loekker.get(navn);
   if (til === !!koerer) {
     if (koerer) koerer.gain.gain.value = vol;
     return;
   }
   if (!til) {
-    // kort fade, så løkken ikke klipper
+    // Kort fade, så løkken ikke klipper — som forrang (40 ms), når kanalen er
+    // optaget; ellers 0,12 s, og kommer der en lyd imens, tager den halen.
     try {
-      koerer.gain.gain.linearRampToValueAtTime(0, ctx.currentTime + 0.12);
-      koerer.kilde.stop(ctx.currentTime + 0.15);
+      koerer.gain.gain.linearRampToValueAtTime(0, ctx.currentTime + (optaget ? 0.04 : 0.12));
+      koerer.kilde.stop(ctx.currentTime + (optaget ? 0.05 : 0.15));
     } catch { /* allerede stoppet */ }
     loekker.delete(navn);
+    if (navn !== 'ambience') { udtoner.add(koerer); koerer.kilde.onended = () => udtoner.delete(koerer); }
     return;
   }
   // En gruppe løkkes altid på sin første variant (boret har kun én).
@@ -604,7 +642,7 @@ export function saetMusikVolumen(v) {
 
 /* Lyd fra (mute): både effekter og musik tier; skyderne huskes. */
 export function saetLydFra(fra) {
-  lydFra = !!fra;
+  lydFra = !!fra || STILLE;
   if (master) master.gain.value = lydFra ? 0 : volumen;
   if (ctx && sporNu && numre.has(sporNu)) {
     numre.get(sporNu).g.gain.setTargetAtTime(lydFra ? 0 : SPOR[sporNu] * musikVolumen * musikDuk, ctx.currentTime, 0.05);

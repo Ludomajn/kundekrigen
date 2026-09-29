@@ -26,6 +26,7 @@ import { VAABEN, startAmmo, tilfaeldigtKassevaaben, kasseAntal, FAVORITTER } fro
 import { valider, K } from './commands.js';
 import { OPKALD, TELEFON_MAKS } from './opkald.js';
 import * as HN from './haendelser.js';
+import * as FA from './farer.js';
 import { filmTicks, filmFlertal } from '../core/filmintro.js';
 
 /* Ro mellem handlingerne (tick): efter en tur uden skade, og efter en tur,
@@ -59,6 +60,9 @@ const STANDARD_CFG = {
   // haendelser: null = alle; ellers en liste over dem, der må ske.
   haendelseChance: HN.HAENDELSE_CHANCE,
   haendelser: null,
+  // Farer i realtid fra runde 2 (sim/farer.js, docs/farer.md). farer: null =
+  // alle; [] = ingen (og intet træk fra rngSim); ellers en liste over slags.
+  farer: null,
 };
 
 export function lavVerden(opsaet) {
@@ -101,6 +105,10 @@ class Verden {
     this.eksplosionsKoe = [];
     this.forsinkede = [];
     this.doedskoe = [];
+    // Farerne, ilden og planlæggeren (sim/farer.js) — ren data i snapshottet.
+    this.farer = [];
+    this.ild = [];
+    this.farePlan = FA.nyPlan();
     this.sidsteBaeverPrHold = {};
     // Hvert hold husker sit eget våben og sin lunte. Ét fælles valg lod
     // modstanderens sidste våben følge med over i næste spillers tur.
@@ -517,6 +525,12 @@ class Verden {
         // PANEL_PAUSE_LOFT tick stille pr. tur, se SPILLER_AKTIV.
         this.panelAabent = !!cmd.aaben;
         break;
+      case 'vejledning':
+        // Kun den aktive spiller kan sende den (valider). Kvoten hører til
+        // kundens ejer (uden ejer: holdet), så den gælder hele kampen — ikke
+        // pr. tur; se SPILLER_AKTIV. Flaget nulstilles ved hver _turStart.
+        this.tur.vejledning = cmd.aktiv ? (b.ejer || `hold${b.hold}`) : null;
+        break;
       case 'affyr':
         // Mens boret arbejder, STOPPER et nyt tryk det i stedet for at skyde.
         if (b.redskab?.slags === 'bor') { b.redskab.stop = true; break; }
@@ -607,7 +621,7 @@ class Verden {
     const iKoe = this.eksplosionsKoe.findIndex((e) => !(e.tick > this.tick));
     if (iKoe >= 0) {
       const e = this.eksplosionsKoe.splice(iKoe, 1)[0];
-      D.eksploder(this, e.x, e.y, e.radius, e.skade, e.knockback, e.carve).forEach((x) => h.push(x));
+      D.eksploder(this, e.x, e.y, e.radius, e.skade, e.knockback, e.carve, null, e.kilde).forEach((x) => h.push(x));
     }
 
     // Forsinkede spawns (luftangreb, mursten) og forsinkede handlinger
@@ -622,6 +636,8 @@ class Verden {
     }
 
     this._fysik(h);
+    // Farerne og ilden — kun i aktiv tid (sim/farer.js).
+    FA.skridt(this, h);
     D.tjekDrukning(this, h);
 
     // En kunde, der har lagt på, bærer ingen status — hverken kraftfelt,
@@ -658,12 +674,15 @@ class Verden {
 
     for (let i = this.projektiler.length - 1; i >= 0; i--) {
       const p = this.projektiler[i];
+      const x0 = p.x, y0 = p.y;
       let traef = F.skridtProjektil(t, p, this.vindNu(), this.baevere, F.luftmodstand(this.vejr));
       // Et skud, der rammer en printer direkte, går af dér (granater hopper videre).
       if (!traef && p.rammerBaevere && p.detonation && this.placerede.some((x) => x.sprite === 'toende' &&
           !x.doed && Math.abs(x.x - p.x) < 14 && p.y - x.y > -4 && p.y - x.y < 26)) {
         traef = { slags: 'printer' };
       }
+      // …og det samme ved en fare på vejen (sim/farer.js): braget sker på den.
+      if (!traef) traef = FA.projektilRammer(this, p, x0, y0);
       if (!traef) continue;
       this.projektiler.splice(i, 1);
       if (traef.slags === 'ude') { h.push({ navn: 'projektilUde', id: p.id }); continue; }
@@ -680,7 +699,9 @@ class Verden {
       const d = p.detonation;
       if (d) {
         const direkte = traef.slags === 'baever' ? traef.baever.id : null;
-        D.eksploder(this, p.x, p.y, d.radius, d.skade, d.knockback, d.carve, direkte)
+        // Skuddets eget brag er kædens start (dybde 0, docs/farer.md).
+        const kilde = { kaedeId: p.kaedeId ?? p.id, kildeHold: p.ejerHold ?? null, kildeBaever: p.ejer ?? null, kaede: 0 };
+        D.eksploder(this, p.x, p.y, d.radius, d.skade, d.knockback, d.carve, direkte, kilde)
           .forEach((e) => h.push(e));
       }
     }
@@ -691,18 +712,25 @@ class Verden {
       // skridtFaldende tæller alderen op — én gang pr. tick, så en armering
       // på 300 tick også ER 5 s.
       F.skridtFaldende(t, p, this.vindNu());
+      // Kæden: en lunte, ilden har tændt, bærer den (sim/farer.js), men kun
+      // mens den brænder. Ellers er en mine sin egen start med ejerens hold —
+      // også når tvungenRo har slukket lunten (dvale): et nærhedsbrag turer
+      // senere er ikke den gamle kæde.
+      const kilde = p.lunte > 0 && p.kaedeId !== undefined ? D.kildeFelter(p)
+        : { kaedeId: p.id, kildeHold: p.ejerHold ?? null, kildeBaever: p.ejer ?? null, kaede: 0 };
       if (p.lunte > 0) {
         p.lunte--;
         if (p.lunte === 0) {
           this.placerede.splice(i, 1);
-          this.eksplosionsKoe.push({ x: p.x, y: p.y, ...p.detonation });
+          this.eksplosionsKoe.push({ x: p.x, y: p.y, ...p.detonation, kilde });
+          if (p.sprite === 'toende') h.push({ navn: 'printerSprang', x: p.x, y: p.y, ...kilde });
         }
       } else if (p.naerhed && p.alder > (p.armering || 0)) {
         const traf = this.baevere.some((b) => !b.doed &&
           Math.abs(b.x - p.x) < p.naerhed && Math.abs(b.y - p.y) < p.naerhed);
         if (traf) {
           this.placerede.splice(i, 1);
-          this.eksplosionsKoe.push({ x: p.x, y: p.y, ...p.detonation });
+          this.eksplosionsKoe.push({ x: p.x, y: p.y, ...p.detonation, kilde });
         }
       }
     }
@@ -710,10 +738,11 @@ class Verden {
     for (let i = this.kasser.length - 1; i >= 0; i--) {
       const k = this.kasser[i];
       if (k.doed) { this.kasser.splice(i, 1); continue; }
-      if (k.slags === 'telefon' || k.slags === 'helbred') {
+      if (k.slags === 'telefon' || k.slags === 'helbred' || k.fald) {
         // Telefonen og pillerne står på jorden; sprænges jorden væk, falder de.
+        // Den nedskudte drones pakke (k.fald) falder frit, fejet (sim/farer.js).
         if (k.landet && !t.fast(Math.round(k.x), Math.round(k.y) - 2)) { k.landet = false; k.paaJorden = false; }
-        F.skridtFaldende(t, k);
+        if (k.fald) FA.skridtPakke(t, k); else F.skridtFaldende(t, k);
         if (k.y < this.vandNiveau || t.udenfor(k.x, k.y)) { this.kasser.splice(i, 1); continue; }
       } else {
         // Sprænges jorden under en landet forsyningskasse, daler den videre.
@@ -797,7 +826,13 @@ class Verden {
         // med det samme i stedet for at vente på, at uret løber ud.
         if (this._aktivErDoed()) { this._afslutTur(h, 'kunden døde'); break; }
         this._styr(h);
-        if (!this.panelAabent) tur.tickTilbage--;
+        // Uret venter først på vejledningen (kvoten pr. ejer pr. kamp), så på
+        // arsenalet (PANEL_PAUSE_LOFT pr. tur) — så vejledningens trin 4, der
+        // åbner arsenalet, ikke bruger de 5 s, oversigten lover arsenalet.
+        const vj = tur.vejledning;
+        const vjBrugt = vj ? (tur.vejledningBrugt[vj] || 0) : 0;
+        if (vj && vjBrugt < TU.VEJLEDNING_LOFT) tur.vejledningBrugt[vj] = vjBrugt + 1;
+        else if (!this.panelAabent) tur.tickTilbage--;
         else if (tur.pausetTick < TU.PANEL_PAUSE_LOFT) tur.pausetTick++;
         else tur.tickTilbage--;
         if (tur.tickTilbage <= 0) {
@@ -875,6 +910,14 @@ class Verden {
     return !b || b.doed;
   }
 
+  /** Tick, uret endnu venter på vejledningen i denne tur (0: det går).
+   *  Kommer med deltaen som h.vj, så alle kan se ventetiden. */
+  vejledningTilbage() {
+    const vj = this.tur.vejledning;
+    if (!vj || this.tur.tilstand !== T.SPILLER_AKTIV) return 0;
+    return Math.max(0, TU.VEJLEDNING_LOFT - (this.tur.vejledningBrugt?.[vj] || 0));
+  }
+
   /** Oversæt holdte taster til bevægelse. Én gang per tick. */
   _styr(h, kunBevaegelse = false) {
     const b = this.aktivBaever();
@@ -921,6 +964,7 @@ class Verden {
     this.tur.baeverId = naeste.baever.id;
     this.tur.tickTilbage = this._turTicks();
     this.tur.pausetTick = 0;
+    this.tur.vejledning = null;              // kvoten (vejledningBrugt) følger kampen
     this.tur.retreatTil = null;
     this.tur.tilstand = T.TUR_START;
     this.tur.tilstandTick = 0;
@@ -934,6 +978,9 @@ class Verden {
     this.opladning = 0;
     this.opladerNu = false;
     this.holdt = 0;
+
+    // Ildskadens loft (sim/farer.js, ILD_LOFT) gælder pr. tur.
+    for (const b of this.baevere) b.ildTur = 0;
 
     // Hjemmearbejdet slutter, når holdet er på igen.
     for (const b of this.baevere) {
@@ -1107,6 +1154,8 @@ class Verden {
         for (const p of pladser) {
           if (n >= 3) break;
           if (this.baevere.some((x) => !x.doed && Math.abs(x.x - p.x) < 80)) continue;
+          // Ikke i ilden: den spreder sig to celler og antænder minen (sim/farer.js).
+          if (this.ild.some((q) => Math.hypot(q.x - p.x, q.y - p.y) < FA.STORM_ILD_AFSTAND)) continue;
           this.placerede.push(E.lavPlaceret(this.nytId(), {
             x: p.x, y: p.y + 2, lunte: 0, naerhed: VAABEN.baevermine.placeret.naerhed, armering: 60,
             detonation: { radius: 52, skade: 42, knockback: 240, carve: true },
@@ -1128,7 +1177,8 @@ class Verden {
         // Borer kunden, slutter boret FØR flytningen — ellers gravede næste
         // kapsel en rende fra det gamle sted til det nye.
         if (b.redskab) { const vid = b.redskab.vaaben; B.stopRedskab(this, b, h); this._redskabFaerdig(b, vid); }
-        h.push({ navn: 'teleport', baever: b.id, fraX: b.x, fraY: b.y, x: p.x, y: p.y });
+        // kilde: telefonen, ikke Fjernsupport — vejledningen tæller det ikke som et skud (ui/hjaelp.js).
+        h.push({ navn: 'teleport', baever: b.id, kilde: 'telefon', fraX: b.x, fraY: b.y, x: p.x, y: p.y });
         b.x = p.x; b.y = p.y; b.vx = 0; b.vy = 0; b.paaJorden = true; b.faldFra = null;
         F.frigoer(this.terraen, b);
         break;
@@ -1300,13 +1350,17 @@ class Verden {
     this.placerede = snap.placerede.map((p) => ({ ...p, armerRest: E.armerRest(p) }));
     this.kasser = snap.kasser.map((k) => ({ ...k }));
     this.gravsten = snap.gravsten.map((g) => ({ ...g }));
-    this.tur = { ...snap.tur };
+    this.tur = { ...snap.tur, vejledningBrugt: { ...(snap.tur.vejledningBrugt || {}) } };
     this.sidsteBaeverPrHold = { ...snap.sidsteBaeverPrHold };
     this.vaabenPrHold = { ...(snap.vaabenPrHold || {}) };
     this.haendelseNu = snap.haendelseNu ? { ...snap.haendelseNu } : null;
     this.sidsteHaendelse = snap.sidsteHaendelse ?? null;
     if (snap.valgtVaaben) this.valgtVaaben = snap.valgtVaaben;
     if (snap.valgtLunte) this.valgtLunte = snap.valgtLunte;
+    // Farerne, ilden og planlæggeren; ældre snapshots har dem ikke.
+    this.farer = (snap.farer || []).map(FA.kopierFare);
+    this.ild = (snap.ild || []).map((p) => ({ ...p }));
+    this.farePlan = FA.kopierPlan(snap.farePlan);
     this.rngSim.saet(snap.rng);
     this._id = snap.naesteId;
     this.eksplosionsKoe = [];
@@ -1331,6 +1385,12 @@ class Verden {
     bland(this.vandNiveau);
     for (const b of this.baevere) { bland(b.id); bland(b.x); bland(b.y); bland(b.hp); bland(b.doed ? 1 : 0); }
     for (const p of this.projektiler) { bland(p.id); bland(p.x); bland(p.y); }
+    // Kun med farer eller ild: uden er aftrykket bit for bit det gamle (FNV
+    // ganger også ved 0-bytes, så selv en tom liste ville ændre det).
+    if (this.farer.length || this.ild.length) {
+      for (const f of this.farer) { bland(f.id); bland(f.x); bland(f.y); }
+      bland(this.ild.length);
+    }
     h ^= this.terraen.aftryk();
     return h >>> 0;
   }

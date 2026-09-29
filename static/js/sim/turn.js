@@ -32,6 +32,9 @@ export const TUR_START_TICKS = 150;         // kamerapanorering + vindrul — i 
 export const RO_HYSTERESE = 12;             // sammenhængende rolige tick
 export const RO_VAGTHUND = 720;             // 12 s — tvungen ro
 export const PANEL_PAUSE_LOFT = 300;        // 5 s tururet må stå stille per tur
+// 30 s tururet må vente på vejledningen (ui/hjaelp.js) — pr. kundeejer pr.
+// KAMP, ikke pr. tur, så det ikke kan misbruges hver tur. Bruges før arsenalets.
+export const VEJLEDNING_LOFT = 1800;
 export const SUDDEN_SPRING = 24;            // vandet hopper ved udløsning
 export const SUDDEN_STIGNING = 6;           // og derefter per tur
 
@@ -50,6 +53,8 @@ export function nyTur(v) {
     runde: 0,                   // hel omgang, hvor hver levende klinik har haft én tur (1 = første)
     fuldtTilbagetog: false,     // turen venter på hele tilbagetoget (minen)
     smitteKoert: false,         // COVID-opgøret er kørt for denne tur
+    vejledning: null,           // hvis kvote uret venter på i denne tur (null: det går)
+    vejledningBrugt: {},        // tick brugt af VEJLEDNING_LOFT pr. kundeejer i kampen
   };
 }
 
@@ -117,6 +122,13 @@ export function erIRo(v) {
   // faldet til ro. Talte den med, ventede hvert dødsfald på vagthunden (12 s).
   for (const k of v.kasser) if (!k.landet && !k.doed) return false;
   for (const p of v.placerede) if (!p.paaJorden && !p.doed) return false;
+  // Farerne (sim/farer.js): en brand, et fald efter et skub og et styrt er
+  // endelige ure; en printer eller mine, ilden har tændt, har en lunte; og ild,
+  // der stadig kan nå en printer eller mine, truer. Så afvikles hele kæden i
+  // skyttens egen tur. Rullende, flyvende og kørende farer er ikke uro.
+  for (const f of v.farer || []) if (f.uro > 0) return false;
+  for (const p of v.placerede) if (p.lunte > 0 && !p.doed) return false;
+  for (const p of v.ild || []) if (p.truer) return false;
   for (const b of v.baevere) {
     if (b.doed) continue;
     if (b.redskab) return false;
@@ -148,7 +160,20 @@ export function tvungenRo(v, h) {
     }
   }
   for (const k of v.kasser) k.landet = true;
-  for (const p of v.placerede) p.paaJorden = true;
+  for (const p of v.placerede) { p.paaJorden = true; p.lunte = 0; }
+  // Farerne: brændende og styrtende fjernes, resten falder til ro, og ilden
+  // spreder sig ikke mere (sim/farer.js).
+  if (v.farer) {
+    for (const f of v.farer) {
+      if (f.brand > 0 || f.styrt > 0) {
+        f.vaek = 'slukket';
+        h.push({ navn: 'fareVaek', id: f.id, slags: f.slags, hud: f.hud, x: f.x, y: f.y, grund: 'slukket' });
+      }
+      f.luft = 0; f.uro = 0;
+    }
+    v.farer = v.farer.filter((f) => !f.vaek);
+  }
+  for (const p of v.ild || []) { p.spred = false; p.truer = false; }
   h.push({ navn: 'tvungenRo' });
 }
 

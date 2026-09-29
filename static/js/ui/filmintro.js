@@ -28,6 +28,9 @@ import { HOLD } from '../render/palette.js';
 import { esc } from './tekst.js';
 
 const MAPPE = '/grafik/intro/';
+// /?stille (udviklerens tests): klippenes lyd går uden om lydmotoren, så de
+// holdes selv lydløse.
+const STILLE = (() => { try { return new URLSearchParams(location.search).has('stille'); } catch { return false; } })();
 let data = null;                      // intro.json, når den er hentet (ellers {})
 let henter = null;
 
@@ -245,7 +248,7 @@ export function lavFilmIntro(rod) {
       for (const plads of rod.querySelectorAll('.film-klip[data-video]')) {
         const v = klipTil(plads.dataset.video);
         v.pause();
-        v.muted = false;
+        v.muted = STILLE;
         v.preload = 'auto';
         if (v.readyState >= 1) v.currentTime = 0;
         plads.appendChild(v);

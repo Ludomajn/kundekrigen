@@ -20,16 +20,19 @@ export const HOLD_NAVNE = {
   gul: 'Klinik Gul',
 };
 
+/* kort: kaldenavnet på tålmodighedsbjælken over kunden og i holdlisten
+ * (ui/tbj.js kortNavn; romertallet kommer bagefter). Kun til visning i
+ * klienten — over nettet rejser kun navn, så rum.py er upåvirket. */
 export const PERSONALE = {
   groen: [
-    { navn: 'Skrankepaven Ingrid', figur: 16 },         // sekretær, direkte og hård
-    { navn: 'Bente "Bare Rolig" Hansen', figur: 17 },   // sygeplejerske, overbeskyttende
-    { navn: 'Hansen, Dr. Hansen', figur: 18 },          // speciallæge, arrogant
+    { navn: 'Skrankepaven Ingrid', kort: 'Ingrid', figur: 16 },          // sekretær, direkte og hård
+    { navn: 'Bente "Bare Rolig" Hansen', kort: 'Bente', figur: 17 },     // sygeplejerske, overbeskyttende
+    { navn: 'Hansen, Dr. Hansen', kort: 'Dr. Hansen', figur: 18 },       // speciallæge, arrogant
   ],
   blaa: [
-    { navn: 'Praktikant Trine', figur: 19 },            // sekretær, passiv-aggressiv
-    { navn: 'Systemsygeplejerske 2.0', figur: 20 },     // sygeplejerske, koldt klinisk
-    { navn: 'Dr. Jan fra Mors', figur: 21 },            // speciallæge, bitter og vestjysk
+    { navn: 'Praktikant Trine', kort: 'Trine', figur: 19 },              // sekretær, passiv-aggressiv
+    { navn: 'Systemsygeplejerske 2.0', kort: 'System 2.0', figur: 20 },  // sygeplejerske, koldt klinisk
+    { navn: 'Dr. Jan fra Mors', kort: 'Dr. Jan', figur: 21 },            // speciallæge, bitter og vestjysk
   ],
 };
 

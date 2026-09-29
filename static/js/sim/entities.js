@@ -64,6 +64,7 @@ export function lavBaever(id, holdId, navn, udseende, ejer) {
     springOver: 0,                       // Tvangsopdatering: næste tur springes over
     graver: false,                       // sand, mens boret arbejder
     smittet: 0,                          // COVID: ture tilbage med smitte
+    ildTur: 0,                           // ildskade i denne tur (sim/farer.js: højst ILD_LOFT)
   };
 }
 
@@ -82,6 +83,8 @@ export function lavProjektil(id, opt) {
     lunte: opt.lunte ?? -1,              // i tick; -1 = detonerer ved nedslag
     ejer: opt.ejer ?? null,
     ejerHold: opt.ejerHold ?? null,
+    // Kæden (docs/farer.md): klyngens børn arver moderens; ellers er det id'et.
+    kaedeId: opt.kaedeId ?? null,
     sprite: opt.sprite || 'gren',
     spor: opt.spor || null,
     sover: false,

@@ -65,6 +65,14 @@ export const SPEAKER = {
   vandet_stiger: 'stemme_announcer_vandet_stiger',   // pludselig død: vandet stiger
 };
 
+/* Speakerens replikker, som brugeren endnu ikke har optaget. De hentes, hvis
+ * de findes (Assets/Kundelyde/Announcer/Sygt play.aifc giver filen med
+ * vaerktoej/kundelyde.py), og står IKKE i ALLE_STEMMER, der alle skal findes.
+ * Indtil da spiller ui/farer.js introens slag (lyd.har). */
+export const SPEAKER_SENERE = {
+  sygt_play: 'stemme_announcer_sygt_play',           // en kæde skadede to fjender eller dræbte én
+};
+
 /*
  * De generelle, komiske lyde (brugerens egne, Assets/Kundelyde): skud,
  * granater, infernoet og eksplosionerne. Affyringslydene er sjove, men
