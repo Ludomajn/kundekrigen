@@ -1,0 +1,17 @@
+# Render.com "Blueprint" (Frankfurt-kopi): New -> Blueprint, peg på repoet og sæt Blueprint Path til render.frankfurt.yaml.
+# Kundekrigen bruger kun Pythons standardbibliotek, så der er intet at bygge.
+services:
+  - type: web
+    name: kundekrigen-fra
+    region: frankfurt
+    runtime: python
+    plan: free
+    buildCommand: echo "Kun standardbiblioteket - intet at bygge"
+    startCommand: python3 app.py
+    healthCheckPath: /api/status
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.12.8
+      # Render står foran serveren som proxy; se App.klient_ip i app.py.
+      - key: BAG_PROXY
+        value: "1"
