@@ -5,14 +5,13 @@ Each agent owns a specific domain, enforcing separation of concerns and quality.
 
 ## Technology Stack
 
-- **Engine**: [CHOOSE: Godot 4 / Unity / Unreal Engine 5]
-- **Language**: [CHOOSE: GDScript / C# / C++ / Blueprint]
-- **Version Control**: Git with trunk-based development
-- **Build System**: [SPECIFY after choosing engine]
-- **Asset Pipeline**: [SPECIFY after choosing engine]
-
-> **Note**: Engine-specialist agents exist for Godot, Unity, and Unreal with
-> dedicated sub-specialists. Use the set matching your engine.
+- **Engine**: none — own web stack (no Godot/Unity/Unreal; never use their specialist agents)
+- **Language**: JavaScript (vanilla ES modules, client in `static/js/`) + Python 3 stdlib only (server: `app.py`, `ws.py`, `protokol.py`, `rum.py`)
+- **Version Control**: Git, branch `main`, deploys to Render on push
+- **Build System**: none — no build step, no npm; Three.js vendored in `static/vendor/`
+- **Asset Pipeline**: static files in `static/grafik/` and `static/lyd/`; tools in `vaerktoej/`
+- **Run**: `python3 app.py` → http://localhost:8788 (test in the browser with `/?stille`)
+- **Tests**: `test/` and `test_ws.py` (not `tests/unit/`)
 
 ## Project Structure
 
@@ -20,14 +19,9 @@ Each agent owns a specific domain, enforcing separation of concerns and quality.
 
 ## Engine Version Reference
 
-<!-- ENGINE-REFERENCE-IMPORT: the line below is engine-specific. /setup-engine
-     rewrites it to @docs/engine-reference/<engine>/VERSION.md for the chosen
-     engine, so a Unity or Unreal project stops loading the Godot reference every
-     session. It defaults to Godot (the template's example engine); skills that
-     need the pinned version read docs/engine-reference/<engine>/VERSION.md on
-     demand regardless of this import. -->
-@docs/engine-reference/godot/VERSION.md
-
+N/A — Kundekrigen uses no Godot/Unity/Unreal: vanilla ES modules, Three.js
+(vendored in `static/vendor/`) and a Python-stdlib server. There is no engine
+reference to import, so `/setup-engine` is skipped.
 
 ## Technical Preferences
 
