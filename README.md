@@ -362,6 +362,16 @@ Tre kilder, alle i `static/lyd/`:
     `vaerktoej/klipdialog.py`.
 - **Eksplosionerne og baggrunden** (`brag`, `nedslag`, `ambience`) er fra
   Kenney.nl (CC0).
+- **Uvejrets torden og stenskredet** (`k_torden_1`, `k_stenskred_1`) er fra
+  "Explosions - Sound Effects" (Nicola Fabro; LICENSE.md tillader kommerciel
+  brug og bearbejdning), bygget af `vaerktoej/kontorlyde.py` som de andre
+  kontorlyde (`Far_Explosion` og stenenes del af `Big_Explosion_Rocks_Falling`).
+- **Vinden** er syntetiseret i `ui/lyd.js` (`vindlyd`), som flyvelyden: et
+  lavt sus, der stiger og lysner med den effektive vind (`world.vindNu`), og
+  ved hvert vindstød et kort sus, der fejer hen over stereobilledet i vindens
+  retning. Suset er baggrund som ambience; vindstødets sus starter kun, når
+  kanalen er fri, og tier, når noget andet lyder. Samme tal driver vindstriberne
+  på himlen (`render/weather.js`), så man ser og hører det, skuddet mærker.
 
 Motoren (`ui/lyd.js`) er WebAudio med ÉN fælles kanal for korte lyde: spiller
 der noget, springes en ny lyd over — de må aldrig overlappe. Undtagelser:

@@ -22,7 +22,7 @@ import { lavPyntView } from './render/pynt_view.js';
 import { malMenuScene } from './render/menu_kunst.js';
 import { lavBaeverView, indlaesGrafik } from './render/figur_view.js';
 import { lavParallaks } from './render/parallax.js';
-import { lavVejr } from './render/weather.js';
+import { lavVejr, vindTilstand } from './render/weather.js';
 import { lavVand } from './render/water.js';
 import { lavFx, lavProjektilView, lavGenstandView, lavSigte, telefonRinger, mineSekund } from './render/fx.js';
 import { OPKALD } from './sim/opkald.js';
@@ -1222,7 +1222,11 @@ function opdaterVisning(dt, tid) {
   vi.terraen.saetVand(v.vandNiveau);
   vi.vand.opdater(v.vandNiveau, tid);
   vi.vejr.saetType(v.vejr);
-  vi.vejr.opdater(tid, v.vindNu());
+  // Synlig og hørbar vind (story-001): striberne og vindlyden følger den
+  // effektive vind fra simulationens tilstand — ens hos vært, gæst og lokalt.
+  const vindT = vindTilstand(v.vindNu(), v.vind, v.vejr);
+  vi.vejr.opdater(tid, v.vindNu(), vindT);
+  lyd.vindlyd(S.tilstand === 'spil' && !S.pause ? vindT : null);
   vi.parallaks.saetVejr(v.vejr);
 
   // Kamerastyring

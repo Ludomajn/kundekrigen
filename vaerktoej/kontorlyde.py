@@ -164,6 +164,13 @@ GRUPPER = [
     # NOM: den suger mailen op (slurp) eller gumler den (hver sin variant).
     ('nom', 0.5, 'signal', [('Other/drink_slurp', AUTO), ('Other/munching_food', AUTO)]),
     ('ild', 2.0, 'svag', None),                                            # løkke, se byg_ild
+    # Story-001, mere intens. Fra "Explosions - Sound Effects" (Nicola Fabro, LICENSE.md:
+    # kommerciel brug og bearbejdning tilladt, ingen kreditering krævet).
+    # UVEJR: et fjernt brag som torden, der ruller ud (henfaldet er ~3 s; 0,8 s udtoning).
+    ('torden', 2.4, 'begivenhed', [('../Explosions - Sound Effects/Far_Explosion', {'ud': 0.8})]),
+    # STENSKRED: det tætte stykke, hvor stenene falder, efter selve braget.
+    ('stenskred', 1.6, 'begivenhed', [('../Explosions - Sound Effects/Big_Explosion_Rocks_Falling',
+                                       {'start': 1.4, 'ud': 0.5})]),
 ]
 OPLAD = ('Machines/hydraulic_up', 0.20, 0.62, 0.6)          # kilde, fra, til, båndtempo
 BOR = ('Machines/razor_buzz', 0.165, 1.000, 1.014, 0.05)    # kilde, start, min./maks. længde, krydstoning
@@ -221,7 +228,8 @@ def styrke(x):
 
 def forbered(rel, hp):
     """Nedmiks, højpas, top -3 dB og stilhed klippet væk. Giver (lyd, korrelation)."""
-    fil = os.path.join(PAKKE, rel + '.wav')
+    # Kilder fra andre pakker angives relativt til pakken ('../Pakke/fil') og må have endelse.
+    fil = os.path.join(PAKKE, rel if os.path.splitext(rel)[1] else rel + '.wav')
     if not os.path.exists(fil):
         raise FileNotFoundError(fil)
     st = ffmpeg_ind(fil, kanaler=2)

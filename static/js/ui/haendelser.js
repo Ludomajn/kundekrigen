@@ -24,6 +24,9 @@ import { effektLyd } from './stemmer.js';
  * klinger ud fra sidste tur, så main.js' første printerbrag ikke kommer
  * først og det her bagefter; spiller en vigtig replik, venter det i køen. */
 const LYD = {
+  // Story-001: uvejrets torden og stenskredets sten (vaerktoej/kontorlyde.py).
+  uvejr: ['torden', { vol: 1.2 }],
+  stenskred: ['stenskred', { vol: 1.2 }],
   internet: ['stemme_systemnedbrud', { vol: 0.9, maksSek: 3 }],
   shitstorm: ['mine_laeg', { vol: 1.4 }],
   kaffepause: ['piller', { vol: 1.2 }],

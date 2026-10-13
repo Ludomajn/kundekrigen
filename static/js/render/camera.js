@@ -18,10 +18,11 @@
  *   skud       200 ms efter affyringen: følger med fart-forspring og zoomer ud
  *              med fart og højde, så buen og jorden under den er med. Klynger
  *              og luftangreb rammes ind sammen.
- *   nedslag    et kort punch-in og en rystelse efter sprængradius (de store
- *              brag får et spark oveni); main.js holder over krateret i
+ *   nedslag    et hurtigt skud ind fra flugtens udsyn til krateret, et
+ *              punch-in og en rystelse efter sprængradius (de store brag får
+ *              et spark oveni); main.js holder over krateret i
  *              NEDSLAG_HOLD_MS, før kameraet vender tilbage
- *   dødsfald   et kort fokus på den, der lægger på
+ *   dødsfald   et kort, tæt fokus på den, der lægger på
  *   markør     rammer kunden og markøren ind sammen (teleport, luftangreb)
  *   ro         en næsten umærkelig "vejrtrækning", så billedet aldrig fryser
  *
@@ -31,7 +32,8 @@
  *
  * Z/X er manuelle trin, der ganges på den dynamiske zoom; H viser hele banen;
  * WASD panorerer frit. prefers-reduced-motion: ingen vejrtrækning, ingen
- * ekstra baggrundsbevægelse og mindre rystelser, punch og spark.
+ * ekstra baggrundsbevægelse, mindre rystelser, punch og spark, og de
+ * stærkere zoomudsving fra story 001 tilbage på det gamle, roligere kamera.
  *
  * Ingen allokeringer i opdater(): alt skrives i genbrugte variabler.
  * Konstanterne, målingerne og hvorfor: docs/kamera.md.
@@ -82,8 +84,9 @@ const VAND_TRAEK = 0.2, VAND_SE = 30;
 // Sigte. Loftet gælder både ganget på det manuelle trin og absolut, så en
 // figur aldrig bliver mindre end ~5 % af skærmhøjden, mens man sigter.
 export const SIGTE_ZOOM = 1.2, SIGTE_ZOOM_KRAFT = 0.4, SIGTE_ZOOM_LOFT = 1.6, SIGTE_ABS_LOFT = 2.0;
-const SIGTE_FREM = 0.12, SIGTE_FREM_KRAFT = 0.12;           // andel af udsnittet
-const SIGTE_FREM_MAKS = 0.26, SIGTE_OP_MAKS = 0.24, SIGTE_NED_MAKS = 0.12;
+// Opladningen skubber billedet tydeligt mod målområdet (en retning, ikke en bane)
+const SIGTE_FREM = 0.12, SIGTE_FREM_KRAFT = 0.18;           // andel af udsnittet
+const SIGTE_FREM_MAKS = 0.3, SIGTE_OP_MAKS = 0.26, SIGTE_NED_MAKS = 0.12;
 // rad fra vinklen, da sigtet sidst var i ro: sigtet er rørt. Mod en fast
 // reference, ikke forrige frame, så det ikke afhænger af billedfrekvensen
 // (simulationen drejer 1° pr. tick, finsigtet 0,25°).
@@ -92,7 +95,7 @@ const SIGTE_VINKEL_TAERSKEL = 0.012;
 // Skud
 const SKUD_VENT = 0.2;                     // s: mundingsglimtet ses, før kameraet drejer
 const SKUD_FREM_X = 0.22, SKUD_FREM_Y = 0.14;   // s fart-forspring
-const SKUD_ZOOM_FART = 0.3;                // ekstra zoom pr. 1000 wu/s
+const SKUD_ZOOM_FART = 0.45;               // ekstra zoom pr. 1000 wu/s: farten kan ses
 export const SKUD_ZOOM_LOFT = 1.9;
 const SKUD_KANT = 0.13;                    // margen i indramningen (andel pr. side)
 const SKUD_INDRE = 0.34;                   // hovedprojektilet holdes inden for ±34 % fra midten
@@ -100,14 +103,15 @@ const SKUD_JORD_MAKS = 1400;               // wu: så langt ned ledes der efter 
 const SKUD_JORD_TRIN = 16;
 export const SKUD_TOP_EKSTRA = 2600;       // wu over banen: et lodret skud på 1500 wu/s fra toppen når 2350 op
 const SKUD_SIDE_EKSTRA = 320;              // wu ud over siderne: et skud fjernes 200 wu ude
-const NEDSLAG_ZOOM = 1.1;
+// Nedslag: fra flugtens udsyn (1,3-1,9) skydes der hurtigt ind over krateret
+const NEDSLAG_ZOOM = 1.0, ZOOM_TID_NEDSLAG = 0.35;
 
 // Markør og kort indramning (scannerens træfpunkt)
 const MARKOER_LOFT = 1.8, MARKOER_KANT = 0.15, MARKOER_INDRE = 0.36;
 const INDRAM_TID = 1.4;                    // s; kun når træfpunktet er uden for billedet
 
 // Nedslag: punch-in, rystelse og (store brag) spark
-const PUNCH_LILLE = 0.035, PUNCH_STOR = 0.085, PUNCH_HALV = 0.12, PUNCH_TID = 0.05;
+const PUNCH_LILLE = 0.05, PUNCH_STOR = 0.095, PUNCH_HALV = 0.16, PUNCH_TID = 0.05;
 const STOR_RADIUS = 70;                    // Datalæk-bomben (74) og opefter
 const STOR_EKSTRA_RYST = 0.35;
 const SPARK_STOR = 0.22;                   // udsnitshøjder pr. sekund, væk fra braget
@@ -117,7 +121,7 @@ const RYST_FREK_A = 43, RYST_FREK_B = 71;  // rad/s: 7 og 11 Hz, ikke billedfrek
 const RYST_FALD = 0.6;                     // halvt så meget ~0,6 skærmbredde væk
 
 // Dødsfald: det sorte hul varer 1,3 s (SORT_HUL_TICKS), så liget smælder
-const DOED_FOKUS = 1.9, DOED_ZOOM = 0.92;
+const DOED_FOKUS = 1.9, DOED_ZOOM = 0.78;
 
 // Ro: vejrtrækningen
 export const AANDE_ZOOM = 0.006, AANDE_X = 3.5, AANDE_Y = 2.2;
@@ -127,6 +131,11 @@ const RO_TID = 0.8;
 // prefers-reduced-motion
 export const REDUCERET_RYST = 0.35;
 const REDUCERET_PUNCH = 0.3, REDUCERET_ETABLER = 0.4;
+// ... og de stærkere zoomudsving (story 001) tilbage til det gamle, roligere kamera
+const REDUCERET_SIGTE_FREM_KRAFT = 0.12, REDUCERET_SKUD_FART = 0.3, REDUCERET_DOED = 0.92;
+// Kranen trækker sig mindre tilbage (REDUCERET_ETABLER), så glidningen sker
+// tættere på og ville føles hurtigere: en blødere fjeder holder farten nede.
+const REDUCERET_FOELG_ETABLER = 0.7;
 
 const KANT = 60;                           // hvor langt ud over banen kameraet må se
 const TAU = Math.PI * 2;
@@ -482,7 +491,7 @@ export function lavKamera(r, terraen, opt = {}) {
         if (skud.y - alt - 30 < y0) y0 = skud.y - alt - 30;
         mx = (x0 + x1) / 2; my = (y0 + y1) / 2;
         fitAbs = Math.max((x1 - x0) / (cw * (1 - 2 * SKUD_KANT)), (y1 - y0) / (ch * (1 - 2 * SKUD_KANT)));
-        dyn = 1 + SKUD_ZOOM_FART * fart / 1000;
+        dyn = 1 + (red ? REDUCERET_SKUD_FART : SKUD_ZOOM_FART) * fart / 1000;
         loft = SKUD_ZOOM_LOFT;
         // Fjederen halter fart * tid bagefter; det er dét punkt, der skal
         // holdes inde i billedet, ikke projektilets egen position.
@@ -494,12 +503,14 @@ export function lavKamera(r, terraen, opt = {}) {
         // ---- dødsfald: et kort fokus
         fokusAktiv = true;
         mx = fokusX; my = fokusY + 20;
-        dyn = DOED_ZOOM; loft = 1;
+        dyn = red ? REDUCERET_DOED : DOED_ZOOM; loft = 1;
         ft = FOELG_TID_DOED; tilstand = 'doed';
       } else if (skud && !skudFlyver) {
         // ---- nedslaget (eller en bombe, der ligger og venter): hold den
         mx = skud.x; my = skud.y + 30;
         dyn = NEDSLAG_ZOOM; loft = NEDSLAG_ZOOM;
+        // Reduceret: samme indramning, men en roligere glidning ind.
+        if (!red) zt = ZOOM_TID_NEDSLAG;
         tilstand = 'nedslag';
       } else if (laas && (markoer || indramTil > ur)) {
         // ---- markøren (eller scannerens træfpunkt) og kunden sammen
@@ -540,7 +551,7 @@ export function lavKamera(r, terraen, opt = {}) {
         // Turstarten: ude først, så blødt ind. Den første tredjedel holdes ude.
         dyn = Math.max(dyn, 1 + (etablerZoom - 1) * glatTrin(0, 0.7, etablerT));
         loft = Math.max(loft, etablerZoom);
-        ft = FOELG_TID_ETABLER;
+        ft = red ? REDUCERET_FOELG_ETABLER : FOELG_TID_ETABLER;
         if (tilstand === 'ro') tilstand = 'etabler';
       }
 
@@ -554,7 +565,7 @@ export function lavKamera(r, terraen, opt = {}) {
         if (sigter) {
           const v = laas.vinkel ?? 0;
           const ax = Math.cos(v) * (laas.retning || 1), ay = Math.sin(v);
-          const andel = SIGTE_FREM + SIGTE_FREM_KRAFT * kraft;
+          const andel = SIGTE_FREM + (red ? REDUCERET_SIGTE_FREM_KRAFT : SIGTE_FREM_KRAFT) * kraft;
           rammeMaalX = klem(ax * andel * vwM, -SIGTE_FREM_MAKS * vwM, SIGTE_FREM_MAKS * vwM);
           rammeMaalY = klem(ay * andel * vhM, -SIGTE_NED_MAKS * vhM, SIGTE_OP_MAKS * vhM);
         } else if (gang > 0) {

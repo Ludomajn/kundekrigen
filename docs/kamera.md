@@ -34,8 +34,8 @@ baggrunden i `render/parallax.js`. Kaldene sidder i `main.js`.
 | Sigte uden kraft | 552 wu | 8,3 % | 90 px |
 | Sigte, fuld kraft (loft 1,6) | 736 wu | 6,3 % | 68 px |
 | Skud i luften (loft 1,9) | op til 874 wu | ned til 5,3 % | 57 px |
-| Nedslag (hold) | 506 wu | 9,1 % | 98 px |
-| Dødsfald (kort fokus) | 423 wu | 10,9 % | 117 px |
+| Nedslag (hold) | 460 wu | 10,0 % | 108 px |
+| Dødsfald (kort fokus) | 359 wu | 12,8 % | 138 px |
 | H og introen | hele banen | ~1,5 % | |
 
 Skærmforholdet ændrer ikke højden, så længe bredden ligger mellem
@@ -69,6 +69,19 @@ var: sigtets og gangens skub og havets træk lægges over i den frie
 forskydning, så et tryk på W ikke også flytter billedet vandret.
 
 ## Tilstandene
+
+Story 001 ("mere intens") gjorde hver tilstand tydeligere forskellig, i
+Worms-ånden: sigtet skubber hårdere mod målområdet, flugten zoomer mere ud
+med farten, nedslaget skyder hurtigt ind over krateret med et kraftigere
+punch, og dødsfaldet går helt tæt på. Med prefers-reduced-motion er de
+stærkere udsving væk (se nedenfor). Målt i turforløbet (60 Hz):
+
+| Tilstand | Zoom | Før story 001 |
+|---|---|---|
+| sigte, fuld kraft | op til 1,6, skubbet op til 30 % af bredden | 1,6, 26 % |
+| skud | 1 + 0,45 × fart/1000, eller indramningen; loft 1,9 | 0,3 × fart/1000 |
+| nedslag | ind til 1,0 på 0,35 s, punch op til 6 % | 1,1 på 0,5 s, punch ~5 % |
+| doed | 0,78 | 0,92 |
 
 Kameraet vælger ét mål pr. frame, i denne rækkefølge:
 
@@ -112,8 +125,11 @@ mod en fast reference, så det ikke afhænger af billedfrekvensen.
 Opladning tæller også. Turen starter altså tæt på, og så:
 
 - zoomen går ud til `SIGTE_ZOOM` (1,2) og med kraften op til 1,6 (`SIGTE_ZOOM_LOFT`)
-- billedet skubbes i sigteretningen: 12 % + 12 % × kraft af udsnittet,
-  højst 26 % vandret, 24 % op og 12 % ned
+- billedet skubbes i sigteretningen: 12 % + 18 % × kraft af udsnittet,
+  højst 30 % vandret, 26 % op og 12 % ned. Opladningen viser altså tydeligt
+  mere af målområdet. Zoomen er ikke skruet op: den halter efter en
+  opladning på ~1,2 s, og et højere sigteloft ville hænge ved ind i et
+  fladt, langsomt skud (`kamera_skud.mjs`: "langsomt, lavt skud" < 1,45)
 - at gå afbryder sigtet
 
 Kameraet viser en **retning**, ikke en forudsagt bane. Det må ikke blive en
@@ -130,7 +146,8 @@ fra vinklen, men ikke kraftens del.
   flyveretningen. Fjederen er stram (0,15 s).
 - **Indramning:** skuddet, forspringet, alt andet i luften og jorden lige
   under skuddet rammes ind i én kasse. Zoomen er det, der skal til for at
-  vise kassen, eller 1 + 0,3 × fart/1000, hvis det er mere. Loftet er 1,9
+  vise kassen, eller 1 + 0,45 × fart/1000, hvis det er mere (1500 wu/s giver
+  1,68, så farten kan ses). Loftet er 1,9
   (`SKUD_ZOOM_LOFT`). Klynger (Integrations inferno) og luftangreb
   (Kvartalsopkrævning) rammes derfor ind sammen, fordi `main.js` sender
   hele `v.projektiler` med.
@@ -158,19 +175,26 @@ Skuddet er aldrig tættere end 10 % på billedkanten.
   udsnittets højde (`RYST_ANDEL`), altså samme udsving på skærmen som før.
   Rystelsen er glat støj ved 7 og 11 Hz, ikke billedfrekvensens hvide
   støj, og halveres hvert 0,25 s.
-- **Punch-in:** zoomen går kort ind, med 3,5 % × radius/50 og højst 3,5 %.
-  Den har halveringstid 0,12 s og en fjeder på 0,05 s, så den aldrig springer.
-- **De store brag** (radius ≥ 70: Datalæk-bomben, 74) får et spark: 8,5 %
-  punch, ekstra rystelse og et skub væk fra braget i positionsfjederen. Det
-  giver et stød på ~15 wu, der falder blødt til ro.
+- **Punch-in:** zoomen går kort ind, med 5 % × radius/50 og højst 5 %.
+  Den har halveringstid 0,16 s og en fjeder på 0,05 s, så den aldrig springer.
+  Målt top: 2,2 % (radius 34), 3,2 % (58) og 6,1 % (74).
+- **De store brag** (radius ≥ 70: Datalæk-bomben, 74) får et spark: 9,5 %
+  punch (testens loft for "et punch, ikke et spring" er 10 %), ekstra
+  rystelse og et skub væk fra braget i positionsfjederen. Det giver et stød
+  på ~15 wu, der falder blødt til ro.
 - **Holdet:** `main.js` holder over krateret i `NEDSLAG_HOLD_MS` (1,5 s)
-  ved zoom 1,1, før det kalder `fokus` på den aktive kunde.
+  ved zoom 1,0, før det kalder `fokus` på den aktive kunde. Zoomen skyder
+  ind fra flugtens 1,3-1,9 med en stram fjeder (0,35 s, `ZOOM_TID_NEDSLAG`),
+  så nedslaget føles som et skud ind på krateret. 0,95 blev prøvet: den
+  tættere hold gjorde glidningen tilbage til skytten hurtigere på skærmen
+  (3,74 bredder/s mod testens loft på 4).
 
 ### Dødsfald: et kort fokus
 
 `kortFokus(x, y)` fra `doedsfald`/`drukner` ser 1,9 s på den, der lægger på.
 Det sorte hul varer 1,3 s, så liget smælder mens kameraet ser på. Zoomen er
-0,92. Et dødsfald går forud for holdet over krateret, men ikke for et skud
+0,78 (før 0,92), så et drab får sit eget, tætte øjeblik: figuren fylder
+12,8 % af højden, som det tætteste manuelle trin. Et dødsfald går forud for holdet over krateret, men ikke for et skud
 i luften.
 
 ### Markør og scannerens træf
@@ -267,7 +291,12 @@ tilstand:
 - ingen vinddrift i baggrunden (den gamle egenbevægelse er uændret)
 - rystelser × 0,35, punch og spark × 0,3
 - turstartens tilbagetrækning × 0,4 (glidningen er der stadig: den viser,
-  hvem der har turen)
+  hvem der har turen), og glidningen har en blødere fjeder (0,7 s mod
+  0,62 s). Uden den gled kranen hurtigere på skærmen end uden reduceret
+  bevægelse, fordi den glider tættere på
+- story 001's stærkere udsving er væk: sigtets skub er 12 % × kraft,
+  flugtens zoom 0,3 × fart/1000, dødsfaldet 0,92, og nedslagets indzoom
+  bruger den almindelige fjeder (0,5 s). Holdets zoom (1,0) er den samme
 
 `camera.reduceretBevaegelse()` læser media-forespørgslen live. Testene
 tvinger den med `opt.reduceret`.
@@ -310,11 +339,15 @@ Målt gennem en hel tur (intro, etablering, gang, sigte, opladning, skud med
 Datalæk-bomben, hold, dødsfald, zoomtrin, næste tur på den anden side af
 banen, fri panorering, C):
 
-- hurtigste glidning: 3,35 udsnitsbredder/s (loft i testen: 4)
-- største acceleration: 34 bredder/s² (loft: 50), altså ingen ryk
+- hurtigste glidning: 3,60 udsnitsbredder/s (loft i testen: 4; før story
+  001: 3,35). Toppen er glidningen tilbage til skytten efter holdet over
+  krateret, der nu er tættere på
+- største acceleration: 33 bredder/s² ved 60 Hz, 35 ved 144 Hz (loft: 50),
+  altså ingen ryk
 - hurtigste zoom: 2,96/s i log (introens oversigt; loft: 3,5)
+- med prefers-reduced-motion: 3,39 bredder/s (før: 3,65), 31 bredder/s²
 
-Tallene er de samme ved 30, 60 og 144 Hz.
+Tallene er de samme ved 30, 60 og 144 Hz (glidningen 3,58-3,64).
 
 ## Kendte grænser og videre arbejde
 

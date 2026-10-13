@@ -33,6 +33,9 @@ const GRUPPER = {
   // ildens knitren (en løkke, der tier, når noget andet lyder).
   fare_kabelsalat: 2, fare_nullermand: 2, fare_drone: 1, fare_stoevsuger: 1, kortslutning: 2,
   stoevsuger_alarm: 1, nom: 2, ild: 1,
+  // Story-001 (vaerktoej/kontorlyde.py, fra "Explosions - Sound Effects"):
+  // UVEJR's torden og STENSKRED's sten.
+  torden: 1, stenskred: 1,
 };
 // Gruppernes egen lydstyrke, målt af værktøjet, så de sidder godt sammen
 // (fodtrin og tik svagt, slag og fald kraftigt). Kaldets vol ganges på.
@@ -48,6 +51,7 @@ const GRUPPE_VOL = {
   tabt: 0.71, inferno_delt: 0.77,
   fare_kabelsalat: 0.5, fare_nullermand: 0.39, fare_drone: 0.34, fare_stoevsuger: 0.37,
   kortslutning: 0.95, stoevsuger_alarm: 0.3, nom: 0.73, ild: 0.47,
+  torden: 0.52, stenskred: 0.47,
 };
 const sidstValgt = new Map();
 
@@ -449,6 +453,7 @@ export function stopAlleLoekker() {
   for (const navn of [...loekker.keys()]) loop(navn, false);
   flyvelyd(null);
   ladelyd(null);
+  vindlyd(null);
 }
 
 /*
@@ -558,6 +563,72 @@ export function flyvelyd(p) {
   flyv.toneGain.gain.setTargetAtTime((p.raket ? 0.028 : 0.045) * (0.3 + 0.7 * f01), t, glat);
   flyv.lfo.frequency.setTargetAtTime(p.tumler ? 5 + f01 * 5 : 0.1, t, 0.1);
   flyv.lfoDybde.gain.setTargetAtTime(p.tumler ? 0.7 : 0, t, 0.1);
+}
+
+/*
+ * Vinden (story-001): syntetiseret som flyvelyden, fordi den skal følge den
+ * effektive vind (world.vindNu) løbende. To lag på samme støj:
+ *   sus  — en lav, svag baggrund, der stiger og lysner med vindstyrken og
+ *          vindstødene. Baggrund som ambience: uden for kanalen.
+ *   stød — når et vindstød rejser sig, et kort sus (1,4 s), der fejer hen over
+ *          stereobilledet i vindens retning. Det følger kanalens regel som
+ *          flyvelyden: det starter kun, når kanalen er fri, optager den ikke,
+ *          og tier, så snart noget andet lyder.
+ * vt er render/weather.js' vindTilstand (styrke, stoed, retning) — eller null.
+ */
+let vindG = null;
+let stoedKlar = true;
+const STOED_OP = 0.35, STOED_NED = 0.15;    // hysterese: ét sus pr. vindstød
+const VIND_SUS = 0.5, VIND_STOED = 0.55;     // lagenes lydstyrke ved fuld vind
+
+function bygVind() {
+  const n = ctx.sampleRate * 2;
+  const buf = ctx.createBuffer(1, n, ctx.sampleRate);
+  const d = buf.getChannelData(0);
+  for (let i = 0; i < n; i++) d[i] = Math.random() * 2 - 1;
+  const stoej = ctx.createBufferSource();
+  stoej.buffer = buf; stoej.loop = true;
+  const lp = ctx.createBiquadFilter();
+  lp.type = 'lowpass'; lp.frequency.value = 300; lp.Q.value = 0.7;
+  const sus = ctx.createGain(); sus.gain.value = 0;
+  stoej.connect(lp); lp.connect(sus); sus.connect(master);
+  const bp = ctx.createBiquadFilter();
+  bp.type = 'bandpass'; bp.frequency.value = 500; bp.Q.value = 0.9;
+  const stoed = ctx.createGain(); stoed.gain.value = 0;
+  const pan = lavPanner(0);
+  stoej.connect(bp); bp.connect(stoed);
+  if (pan) { stoed.connect(pan); pan.connect(master); } else stoed.connect(master);
+  stoej.start();
+  return { lp, sus, bp, stoed, pan, stoedTil: 0 };
+}
+
+export function vindlyd(vt) {
+  if (!ctx || ctx.state !== 'running') return;
+  if (!vt && !vindG) return;
+  if (!vindG) vindG = bygVind();
+  const t = ctx.currentTime, s = vt ? vt.styrke : 0, st = vt ? vt.stoed : 0;
+  vindG.lp.frequency.setTargetAtTime(260 + 900 * s + 500 * st * s, t, 0.3);
+  vindG.sus.gain.setTargetAtTime(s ? VIND_SUS * (0.15 + 0.85 * s) * (1 + 0.6 * st) : 0, t, 0.4);
+  // Noget andet lyder: suset fra et vindstød tier (én lyd ad gangen).
+  if (vindG.stoedTil > t && !kanalFri()) {
+    vindG.stoed.gain.cancelScheduledValues(t);
+    vindG.stoed.gain.setTargetAtTime(0, t, 0.04);
+    vindG.stoedTil = 0;
+  }
+  if (!vt || st < STOED_NED) { stoedKlar = true; return; }
+  if (!stoedKlar || st < STOED_OP || s < 0.15 || !kanalFri() || volumen <= 0) return;
+  stoedKlar = false;
+  const L = 1.4, top = VIND_STOED * (0.4 + 0.6 * s), g = vindG.stoed.gain, f = vindG.bp.frequency;
+  g.cancelScheduledValues(t); g.setValueAtTime(0, t);
+  g.linearRampToValueAtTime(top, t + 0.5); g.linearRampToValueAtTime(0, t + L);
+  f.cancelScheduledValues(t); f.setValueAtTime(380, t);
+  f.linearRampToValueAtTime(900 + 900 * s, t + 0.5); f.linearRampToValueAtTime(450, t + L);
+  if (vindG.pan) {
+    vindG.pan.pan.cancelScheduledValues(t);
+    vindG.pan.pan.setValueAtTime(-0.7 * vt.retning, t);
+    vindG.pan.pan.linearRampToValueAtTime(0.7 * vt.retning, t + L);
+  }
+  vindG.stoedTil = t + L;
 }
 
 /*
