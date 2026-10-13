@@ -49,8 +49,8 @@ for (const type of BANE_TYPER) {
   };
   if (type === 'fort') {
     fordel('siluetter', 'ingen siluet', tael, SKEMAER.fort.siluetter);
-    fordel('landskaber', 'intet landskab', tael2, SKEMAER.fort.landskaber);
-  } else fordel('arketyper', 'ingen arketype', tael, SKEMAER[type].arketyper);
+    fordel('landskaber', 'intet landskab', tael2, [...SKEMAER.fort.landskaber, ...(SKEMAER.fort.nye || [])]);
+  } else fordel('arketyper', 'ingen arketype', tael, [...SKEMAER[type].arketyper, ...(SKEMAER[type].nye || [])]);
 }
 
 // ---------------------------------------------------------------- selve borgene

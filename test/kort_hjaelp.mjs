@@ -8,6 +8,8 @@
 import { deflateSync } from 'node:zlib';
 import { writeFileSync } from 'node:fs';
 import { LUFT, JORD, FJELD, MUR } from '../static/js/sim/terrain.js';
+import { vaelgArketype } from '../static/js/sim/baneregler.js';
+import { fortPlan } from '../static/js/sim/terrain_gen.js';
 
 const CRC = new Int32Array(256);
 for (let n = 0; n < 256; n++) {
@@ -175,6 +177,21 @@ export function beskaer(b, x0, y0, w, h) {
 
 /** Frø nr. i til testene: spredte, faste 32-bit frø. */
 export const testFroe = (i) => (Math.imul(i + 1, 2654435761) + 0x5bd1e995) >>> 0;
+
+/** De arketyper, story 003 lagde til — testene tvinger hver af dem over mange frø. */
+export const NYE_ARKETYPER = [['aaben', 'kloefter'], ['oeer', 'atol'], ['hule', 'skakter'], ['fort', 'port']];
+
+/** n testfrø (fra nr. start), der trækker arketypen (fortet: landskabet med
+ *  2 x 2) — så en arketype kan prøves over mange frø uden at ændre generatoren. */
+export function froeMed(type, arketype, n, start = 0) {
+  const ud = [];
+  for (let i = start; ud.length < n && i < start + n * 200; i++) {
+    const f = testFroe(i);
+    const navn = type === 'fort' ? fortPlan({ antalHold: 2, prHold: 2 }, undefined, f).landskab.navn : vaelgArketype(type, f).arketype;
+    if (navn === arketype) ud.push(f);
+  }
+  return ud;
+}
 
 /* ------------------------------------------------------------ testene */
 

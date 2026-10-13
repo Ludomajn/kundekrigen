@@ -30,6 +30,10 @@ export const FJELD_BUND = 16;        // grundfjeld i bunden (og i hulens loft)
 /* ------------------------------------------------------------ skemaerne
  *
  * Vægtene er lod: arketypen trækkes med en rng, der kun afhænger af frøet.
+ * `nye` er arketyper, der kom til senere (story 003), hver med sin egen
+ * chance (0-1), trukket i et SÆRSKILT rng-trin efter den gamle trækning: så
+ * giver alle andre frø præcis de samme baner som før (testene og
+ * referencesporene bygger på faste frø).
  * Fortets landskab og siluet trækkes hver for sig (terrain_gen.fortStil),
  * så 12 kampe på fortet viser mange forskellige kombinationer.
  */
@@ -37,17 +41,21 @@ export const SKEMAER = {
   fort: {
     siluetter: [['borg', 3], ['tvillinger', 3], ['spir', 3], ['ringmur', 3], ['bastion', 3]],
     landskaber: [['hav', 3], ['skaer', 2], ['oe', 3], ['bakke', 3], ['bro', 3], ['kloeft', 3], ['soe', 3]],
+    nye: [['port', 0.15]],
   },
   oeer: {
     arketyper: [['skaergaard', 4], ['hovedoe', 3], ['tvillinger', 3]],
+    nye: [['atol', 0.23]],
     temaer: [['eng', 3], ['skov', 3], ['klippe', 2], ['strand', 2]],
   },
   hule: {
     arketyper: [['storhal', 3], ['kamre', 4], ['tunnelnet', 3]],
+    nye: [['skakter', 0.23]],
     temaer: [['hule', 1]],
   },
   aaben: {
     arketyper: [['bjergkaede', 3], ['dale', 4], ['plateauer', 3]],
+    nye: [['kloefter', 0.23]],
     temaer: [['eng', 3], ['skov', 3], ['klippe', 1]],
   },
 };
@@ -65,7 +73,18 @@ export function vaelgVaegtet(rng, liste) {
 export function vaelgArketype(type, froe) {
   const S = SKEMAER[type];
   const rng = lavRng((froe ^ 0x1b873593) >>> 0);
-  return { arketype: vaelgVaegtet(rng, S.arketyper), tema: vaelgVaegtet(rng, S.temaer) };
+  const valg = { arketype: vaelgVaegtet(rng, S.arketyper), tema: vaelgVaegtet(rng, S.temaer) };
+  valg.arketype = vaelgNy(froe, S.nye, valg.arketype);
+  return valg;
+}
+
+/** Den særskilte trækning af de nye arketyper (eller landskaber): den første,
+ *  hvis chance rammer, ellers den gamle. Ændrer intet i den gamle trækning. */
+export function vaelgNy(froe, nye, gammel) {
+  if (!nye) return gammel;
+  const rng = lavRng(((froe >>> 0) ^ 0x6c8e9cf5) >>> 0);
+  for (const [navn, p] of nye) if (rng() < p) return navn;
+  return gammel;
 }
 
 /** En rng med de små hjælpere, trukket fra frøet og et salt. */

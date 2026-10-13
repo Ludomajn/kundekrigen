@@ -1,6 +1,6 @@
 /* Kundekrigen — naturbanerne: øer, grotte og åbent land (MapGEN-stil).
  *
- * Hver type har et skema med tre arketyper (baneregler.SKEMAER), og frøet
+ * Hver type har et skema med fire arketyper (baneregler.SKEMAER), og frøet
  * vælger arketype, tema og parametre. Reglerne står i docs/baner.md.
  *
  * Opskriften, fælles for alle tre:
@@ -180,6 +180,8 @@ function bjerg(formNavn, u, su = u) {
  *               bue, og 2-4 småøer omkring
  *   tvillinger  to store øer over for hinanden med et sund og måske et par
  *               skær midt i
+ *   atol        ringens to arme yderst, klinten ud mod havet, og 1-3 lave
+ *               holme i en lav lagune imellem
  * Hver ø har en form (kegle, plateau, to toppe, bakke eller klint), og mange
  * er underskåret ved vandlinjen (overhæng som i Worms). Temaet (eng, skov,
  * klippe, strand) bestemmer pynten og gør klippeøer stejlere.
@@ -225,6 +227,28 @@ function byggOeer(B, arketype, tema) {
         x = c + side * b / 2;
       }
     }
+  } else if (arketype === 'atol') {
+    // Atollen: ringens to arme yderst, med klinten ud mod det åbne hav og en
+    // jævn skråning ind mod en lav lagune, og 1-3 lave holme i lagunen.
+    const hwA = bB * r.mellem(0.1, 0.14);
+    for (const side of [-1, 1]) {
+      ny(side < 0 ? kant + hwA : bB - kant - hwA, hwA, V + r.mellem(260, 480), 'klint');
+      oeer[oeer.length - 1].retn = side;              // klinten vender ud mod havet
+    }
+    const l0 = kant + 2 * hwA, l1 = bB - kant - 2 * hwA;
+    const m = r.heltal(1, 3), bred = [];
+    for (let j = 0; j < m; j++) bred.push(r.heltal(240, 380));      // under ~230 wu får holmen ingen flad top
+    const sund = (l1 - l0 - bred.reduce((a, b) => a + b, 0)) / (m + 1);
+    let x = l0;
+    for (let j = 0; j < m; j++) {
+      const s = sund * r.mellem(0.75, 1.25);
+      if (s < 260 && r() < 0.5) B.broer.push({ xm: x + s / 2, hw: s / 2 });
+      x += s;
+      ny(x + bred[j] / 2, bred[j] / 2, V + r.mellem(130, 220), 'plateau');
+      oeer[oeer.length - 1].under = false;           // holmene er for små til at blive underskåret
+      x += bred[j];
+    }
+    B.lagune = [l0, l1];
   } else {
     // tvillinger: to store øer og et sund
     const sund = r.heltal(180, 420), mid = bB / 2 + r.heltal(-200, 200);
@@ -247,6 +271,7 @@ function byggOeer(B, arketype, tema) {
   for (let cx = 0; cx < fw; cx++) {
     const x = cx * SKALA;
     let h = V - 170 + (fbm1(x * 0.003, hFroe, 2) - 0.5) * 60;
+    if (B.lagune && x > B.lagune[0] - 200 && x < B.lagune[1] + 200) h = Math.max(h, V - 50 + (fbm1(x * 0.006, hFroe ^ 3, 2) - 0.5) * 30);   // lagunens lave bund
     for (const o of oeer) {
       const sa = (x - o.cx) / o.hw, a = Math.abs(sa);
       let hh;
@@ -295,6 +320,8 @@ function byggOeer(B, arketype, tema) {
  *              kan gå igennem (og måske en ekstra tunnel højere oppe)
  *   tunnelnet  tunneler i tre lag på tværs af banen, skrå ramper imellem og
  *              små kamre, hvor de mødes
+ *   skakter    2-4 lodrette skakter med hylder at klatre på, forbundet af
+ *              vandrette gange i tre lag
  * Alle kamre, man kan nå fra en startplads, har gulv at stå på; lukkede
  * lommer markeres, så ingen starter i dem.
  */
@@ -424,6 +451,46 @@ function byggHule(B, arketype) {
       tunnel(F, warp, [[a.cx + a.w * 0.25, ay], [(a.cx + c.cx) / 2, top], [c.cx - c.w * 0.25, cy]], r.mellem(44, 56));
     }
     B.info.kamre = n;
+  } else if (arketype === 'skakter') {
+    // Skakter: 2-4 lodrette skakter fra en sø i bunden højt op i klippen,
+    // forbundet af vandrette gange i tre lag (det nederste altid helt
+    // igennem). I skakterne sidder hylder skiftevis i hver side, ~95 wu
+    // imellem, så man kan klatre op med saltoen (330 op ≈ 113 wu).
+    const n = r.heltal(2, 4);
+    const sk = [];
+    for (let i = 0; i < n; i++) {
+      const cx = bB * (0.12 + 0.76 * (i + 0.5) / n) + r.mellem(-0.2, 0.2) * bB * 0.76 / n;
+      sk.push({ cx, hw: r.mellem(55, 85), top: V + r.mellem(1000, 1260) });
+    }
+    const lag = [V + r.mellem(180, 260), V + r.mellem(520, 640), V + r.mellem(860, 980)];
+    for (const s of sk) {
+      tunnel(F, warp, [[s.cx, V - 80], [s.cx, s.top]], s.hw);
+      form(F, warp, s.cx - 150, s.top - 90, s.cx + 150, s.top + 110, ellipse(s.cx, s.top, r.mellem(110, 150), r.mellem(70, 100)), true);   // kammeret i toppen
+    }
+    for (let l = 0; l < 3; l++) {
+      for (let i = 0; i + 1 < n; i++) {
+        if (l > 0 && r() < 0.3) continue;
+        const a = sk[i], b = sk[i + 1], my = lag[l] + r.mellem(-40, 40);
+        tunnel(F, warp, [[a.cx, lag[l]], [(a.cx + b.cx) / 2, my], [b.cx, lag[l]]], r.mellem(50, 64));
+      }
+    }
+    // en gang fra hver yderste skakt ud mod banens ende, med et kammer for enden
+    for (const [s, ende] of [[sk[0], r.mellem(260, 420)], [sk[n - 1], bB - r.mellem(260, 420)]]) {
+      const y = lag[r.heltal(0, 1)];
+      tunnel(F, warp, [[s.cx, y], [ende, y + r.mellem(-30, 30)]], r.mellem(50, 62));
+      form(F, warp, ende - 180, y - 80, ende + 180, y + 180, (px, py) => Math.max(ellipse(ende, y + 50, r.mellem(120, 170), r.mellem(90, 120))(px, py), y - 50 - py), true);
+    }
+    // hylderne
+    for (const s of sk) {
+      let side = r() < 0.5 ? -1 : 1;
+      for (let y = V + 120 + r.mellem(0, 40); y < s.top - 120; y += r.mellem(88, 100)) {
+        side = -side;
+        if (lag.some((ly) => Math.abs(y - ly) < 80)) continue;      // aldrig foran en gang
+        const lw = s.hw * r.mellem(0.9, 1.15), mx = s.cx + side * (s.hw - lw / 2 + 10);
+        form(F, warp, mx - lw, y - 30, mx + lw, y + 30, (px, py) => Math.max(Math.abs(px - mx) - lw / 2, Math.abs(py - y) - 12), false);
+      }
+    }
+    B.info.kamre = n;
   } else {
     // tunnelnet: tre lag på tværs, skrå ramper imellem, kamre, hvor de mødes,
     // og en stor sø i bunden
@@ -470,6 +537,8 @@ function byggHule(B, arketype) {
  *   plateauer   3-5 flade plateauer i forskellige højder med stejle klinter,
  *               måske et trin; kanaler eller lave sadler imellem, broer over
  *               nogle af kanalerne og huler under plateauerne
+ *   kloefter    en høj slette skåret af 2-4 dybe kløfter ned i havet, måske
+ *               med en hylde, en bro eller en naturlig stenbue
  * Banens ender går altid ned i havet, så ingen kan campe i et hjørne.
  */
 function byggAaben(B, arketype) {
@@ -515,6 +584,46 @@ function byggAaben(B, arketype) {
       top[cx] = h;
     }
     B.info.dale = n;
+  } else if (arketype === 'kloefter') {
+    // Kløftland: en høj slette, skåret af 2-4 dybe, smalle kløfter med
+    // stejle vægge ned til vandet. Sletten springer i højde ved hver kløft,
+    // nogle vægge har en hylde halvvejs, og én kløft kan have en naturlig
+    // stenbue over sig (skåret ud efter feltet, se nedenfor).
+    const n = r.heltal(2, 4);
+    const kl = [];
+    for (let i = 0; i < n; i++) {
+      const x = bB * (0.14 + 0.72 * (i + 0.5) / n) + r.mellem(-0.25, 0.25) * bB * 0.72 / n;
+      const hylde = r() < 0.5 ? { side: r() < 0.5 ? -1 : 1, y: V + r.mellem(120, 210), b: r.mellem(60, 100) } : null;
+      kl.push({ x, hw: r.mellem(60, 120), stejl: r.mellem(3, 6), hylde, bue: false });
+    }
+    if (n >= 2 && r() < 0.5) kl[r.heltal(0, n - 1)].bue = true;     // aldrig alle: mindst én åben kanal
+    const niveau = [];
+    const basis = V + r.mellem(300, 520);
+    for (let i = 0; i <= n; i++) niveau.push(basis + r.mellem(-110, 150));
+    const havbund = V - 150;
+    for (let cx = 0; cx < fw; cx++) {
+      const x = X(cx);
+      // sletten: hvert stykke mellem to kløfter har sin højde, glat overgang ved kløften
+      let h = niveau[0];
+      for (let i = 0; i < n; i++) h += (niveau[i + 1] - niveau[i]) * glat((x - kl[i].x + 60) / 120);
+      h += (fbm1(x * 0.0016, hFroe, 2) - 0.5) * 90;
+      for (const k of kl) {
+        if (k.bue) continue;
+        const s = x - k.x, a = Math.abs(s);
+        let y = a <= k.hw ? havbund : havbund + (a - k.hw) * k.stejl;
+        const hy = k.hylde;
+        if (hy && Math.sign(s) === hy.side) {
+          // væggen op til hylden, hylden, og væggen videre op
+          const a1 = k.hw + (hy.y - havbund) / k.stejl;
+          if (a > a1) y = a <= a1 + hy.b ? hy.y : hy.y + (a - a1 - hy.b) * k.stejl;
+        }
+        if (y < h) h = y;
+      }
+      top[cx] = h;
+    }
+    B.info.kloefter = n;
+    B.kloefter = kl;
+    for (const k of kl) if (!k.bue && r() < 0.35) B.broer.push({ xm: k.x, hw: k.hw });
   } else {
     // plateauer
     const n = r.heltal(3, 5);
@@ -565,7 +674,8 @@ function byggAaben(B, arketype) {
     const kant = Math.min(x, bB - 1 - x) / (bB * 0.07);
     if (kant < 1) { const t2 = 1 - kant; top[cx] = Math.min(top[cx], top[cx] + (havbund - top[cx]) * t2 * t2); }
   }
-  const glattet = terrasser(top, arketype === 'plateauer' ? 70 : 120, arketype === 'plateauer' ? 0.35 : arketype === 'dale' ? 0.45 : 0.62, arketype === 'plateauer' ? 3 : 7);
+  const skarp = arketype === 'plateauer' || arketype === 'kloefter';      // stejle vægge: kun lidt glatning
+  const glattet = terrasser(top, skarp ? 70 : 120, skarp ? 0.35 : arketype === 'dale' ? 0.45 : 0.62, skarp ? 3 : 7);
   const warp = lavWarp(F, (B.froe * 2654435761) >>> 0, arketype === 'bjergkaede' ? 46 : 32);
   profilTilFelt(F, glattet, warp);
 
@@ -599,6 +709,24 @@ function byggAaben(B, arketype) {
     // tynd plade), og med buens top højest på midten.
     if (r() < 0.6 && va != null && ha != null && ha - va > 160 && ha - va < 620) tunnel(F, warp, [[va - 30, by], [(va + ha) / 2, by + r.mellem(40, 80)], [ha + 30, by]], r.mellem(48, 64));
     else form(F, warp, b.cx - 160, by - 90, b.cx + 160, by + 90, ellipse(b.cx, by, r.mellem(100, 160), r.mellem(60, 90)), true);
+  } else if (arketype === 'kloefter') {
+    for (const k of B.kloefter) {
+      const y0 = Math.min(glattet[Math.max(0, Math.round((k.x - k.hw - 160) / SKALA))], glattet[Math.min(fw - 1, Math.round((k.x + k.hw + 160) / SKALA))]);
+      if (k.bue) {
+        // stenbuen: kløften skåret ud under et dæk på 60-90 wu, med rund top
+        const dk = r.mellem(60, 90), rx = k.hw + r.mellem(40, 90), ry = y0 - dk - (V - 170);
+        form(F, warp, k.x - rx, V - 170, k.x + rx, y0 - dk, ellipse(k.x, V - 170, rx, ry), true);
+        continue;
+      }
+      // overhængende kant: en udhuling i væggen lige under kanten
+      if (r() < 0.6) {
+        const sd = r() < 0.5 ? -1 : 1, ey = V + (y0 - V) * r.mellem(0.45, 0.7);
+        let c = Math.round(k.x / SKALA);
+        while (c > 0 && c < fw - 1 && glattet[c] < ey) c += sd;
+        const rx = r.mellem(50, 90), ry = rx * r.mellem(0.5, 0.75), ex = c * SKALA + sd * rx * 0.4;
+        form(F, warp, ex - rx, ey - ry, ex + rx, ey + ry, ellipse(ex, ey, rx, ry), true);
+      }
+    }
   } else if (arketype === 'plateauer') {
     for (const p of B.plat) {
       if (r() < 0.55) {

@@ -9,11 +9,11 @@
  */
 'use strict';
 
-import { T, esc, mmss, VEJR_NAVN, brydOrd } from './tekst.js';
+import { T, esc, mmss, VEJR_NAVN } from './tekst.js';
 import { HOLD, HOLD_ORDEN, holdFarve } from '../render/palette.js';
 import { VAABEN } from '../sim/weapons.js';
 import { FAVORIT_LABELS, ANTAL_FAVORITTER } from './keyboard.js';
-import { ikonHTML } from './vaabenikoner.js';
+import { ikonHTML, farveGruppe } from './vaabenikoner.js';
 import { HZ } from '../core/tick.js';
 import { VEJLEDNING_LOFT } from '../sim/turn.js';
 import { tbjHTML, tbjRefs, saetTbj, saetTbjRamt, kortNavn, hentTbjGrafik, LAV_HP } from './tbj.js';
@@ -193,16 +193,17 @@ export function lavHud(rod, r) {
       const tast = `<span class="favtast">${FAVORIT_LABELS[i]}</span>`;
       if (!id) {
         return `<div class="fav fav-plads" aria-hidden="true" title="${esc(T.spil.tomPladsTitel(FAVORIT_LABELS[i]))}">
-          ${tast}<span class="favplads-ikon"></span><span class="favnavn">${T.spil.tomPlads}</span>
+          <span class="favcirkel"></span>${tast}
         </div>`;
       }
       const w = VAABEN[id];
-      return `<button class="fav" type="button" tabindex="-1" data-vaaben="${esc(id)}"
+      // Navnet popper op over cirklen, når våbnet vælges; tasten står under den.
+      return `<button class="fav farve-${farveGruppe(w)}" type="button" tabindex="-1" data-vaaben="${esc(id)}"
+                aria-label="${esc(w.navn)} (${FAVORIT_LABELS[i]})"
                 title="${esc(w.navn)} (${FAVORIT_LABELS[i]}) — ${esc(w.hjaelp || '')}">
+        <span class="favnavn">${esc(w.navn)}</span>
+        <span class="favcirkel">${ikonHTML(w, 'favikon', true)}<span class="favammo num"></span></span>
         ${tast}
-        <span class="favammo num"></span>
-        ${ikonHTML(w, 'favikon')}
-        <span class="favnavn">${brydOrd(w.navn)}</span>
       </button>`;
     }).join('');
     pladser = [...el.favorit.children].map((knap, i) => ({ id: ids[i], knap, ammo: knap.querySelector('.favammo') }));

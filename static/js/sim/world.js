@@ -533,7 +533,7 @@ class Verden {
         break;
       case 'affyr':
         // Mens boret arbejder, STOPPER et nyt tryk det i stedet for at skyde.
-        if (b.redskab?.slags === 'bor') { b.redskab.stop = true; break; }
+        if (b.redskab) { b.redskab.stop = true; break; }   // boret og Turbostolen
         this._affyr(b, cmd, h);
         break;
     }
@@ -675,6 +675,7 @@ class Verden {
     for (let i = this.projektiler.length - 1; i >= 0; i--) {
       const p = this.projektiler[i];
       const x0 = p.x, y0 = p.y;
+      if (p.soeg) B.styrSoeg(p);
       let traef = F.skridtProjektil(t, p, this.vindNu(), this.baevere, F.luftmodstand(this.vejr));
       // Et skud, der rammer en printer direkte, går af dér (granater hopper videre).
       if (!traef && p.rammerBaevere && p.detonation && this.placerede.some((x) => x.sprite === 'toende' &&
@@ -703,6 +704,12 @@ class Verden {
         const kilde = { kaedeId: p.kaedeId ?? p.id, kildeHold: p.ejerHold ?? null, kildeBaever: p.ejer ?? null, kaede: 0 };
         D.eksploder(this, p.x, p.y, d.radius, d.skade, d.knockback, d.carve, direkte, kilde)
           .forEach((e) => h.push(e));
+      }
+      // Kaffeulykken: dråben tænder den fælles ild (sim/farer.js), efter krateret.
+      if (p.ild) {
+        const kilde = { kaedeId: p.kaedeId ?? p.id, kildeHold: p.ejerHold ?? null, kildeBaever: p.ejer ?? null, kaede: 0 };
+        const n = p.ild.celler || 1;
+        for (let c = 0; c < n; c++) FA.taendIld(this, p.x + (c - (n - 1) / 2) * FA.ILD_CELLE, p.y, 0, kilde, h);
       }
     }
 

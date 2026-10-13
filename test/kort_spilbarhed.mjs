@@ -19,7 +19,7 @@ import { ryddOp, PYNT, PYNT_STOR } from '../static/js/sim/baneregler.js';
 import { Terraen, FJELD, MUR, LUFT } from '../static/js/sim/terrain.js';
 import { kapselFri } from '../static/js/sim/physics.js';
 import { lavVerden } from '../static/js/sim/world.js';
-import { tjek, overskrift, testFroe, lavHold, percentil } from './kort_hjaelp.mjs';
+import { tjek, overskrift, testFroe, lavHold, percentil, froeMed, NYE_ARKETYPER } from './kort_hjaelp.mjs';
 
 /** Kan en kunde stå her? Fri kapsel, når den løftes højst 20 wu (som
  *  physics.frigoer gør ved udsætningen: pladserne må være 18 wu skæve). */
@@ -27,14 +27,17 @@ const kanStaa = (t, p) => { for (let dy = 0; dy <= 20; dy += 2) if (kapselFri(t,
 
 const N = 50, KUNDER = 8;
 
-for (const type of ['aaben', 'hule', 'oeer']) {
-  overskrift(`Spilbarhed: ${type} (${N} frø, ${KUNDER} kunder)`);
-  const fejl = { antal: [], spredt: [], vand: [], kapsel: [], lukket: [], oe: [], bro: [], stumper: [], bobler: [], pynt: [], klump: [], loft: [], soe: [] };
+/** Alle kontrollerne på banerne fra froer; kamp er frøene til kampstarten.
+ *  Med arketype (en tvunget arketype) skal den også holde i første forsøg. */
+function tjekBaner(type, froer, kamp, arketype = null) {
+  overskrift(`Spilbarhed: ${arketype ? `${type}/${arketype}` : type} (${froer.length} frø, ${KUNDER} kunder)`);
+  const fejl = { antal: [], spredt: [], vand: [], kapsel: [], lukket: [], oe: [], bro: [], stumper: [], bobler: [], pynt: [], klump: [], loft: [], soe: [], foerste: [], kanal: [] };
   const hoejder = [];
-  for (let i = 0; i < N; i++) {
-    const froe = testFroe(300 + i);
+  for (let i = 0; i < froer.length; i++) {
+    const froe = froer[i];
     const r = genererSpilbar(froe, type, KUNDER);
     const t = r.terraen, pl = r.pladser;
+    if (arketype && (r.froe !== froe || t.arketype !== arketype)) fejl.foerste.push(i);
     if (pl.length < KUNDER * 3) fejl.antal.push(i);
     if (!pl.length || pl[pl.length - 1].x - pl[0].x < t.w * 0.5) fejl.spredt.push(i);
     for (const p of pl) {
@@ -45,6 +48,16 @@ for (const type of ['aaben', 'hule', 'oeer']) {
       if (L && L.data[Math.min(L.fh - 1, (p.y + 20) >> 2) * L.fw + (p.x >> 2)]) { fejl.lukket.push(i); break; }
     }
     if (t.oeer) for (const o of t.oeer) if (!pl.some((p) => p.x >= o.x0 && p.x <= o.x1)) { fejl.oe.push(i); break; }
+    if (type === 'aaben') {
+      // den garanterede kanal: vand (luft fra 10 under til 30 over vandlinjen) inde på banen, ikke kun ved enderne
+      let kanal = false;
+      for (let x = Math.round(t.w * 0.1); x < t.w * 0.9 && !kanal; x += 8) {
+        let fri = true;
+        for (let y = VAND_NIVEAU - 10; y <= VAND_NIVEAU + 30 && fri; y += 8) if (t.fast(x, y)) fri = false;
+        kanal = fri;
+      }
+      if (!kanal) fejl.kanal.push(i);
+    }
     if (t.kraeverBro) {
       let mur = 0;
       for (let k = 0; k < t.maske.length; k += 5) if (t.maske[k] === MUR) mur++;
@@ -80,6 +93,7 @@ for (const type of ['aaben', 'hule', 'oeer']) {
     }
   }
   const vis = (l) => (l.length ? `frø ${l.slice(0, 8).join(', ')}` : '');
+  if (arketype) tjek(`${arketype}: holder i første forsøg (intet afledt frø) i mindst 90 %`, fejl.foerste.length <= froer.length * 0.1, `${froer.length - fejl.foerste.length}/${froer.length}`);
   tjek(`startpladser til ${KUNDER} kunder x 3`, !fejl.antal.length, vis(fejl.antal));
   tjek('startpladserne spredt over mindst halvdelen af banen', !fejl.spredt.length, vis(fejl.spredt));
   tjek('ingen startplads i vandet (mindst 90 wu over det)', !fejl.vand.length, vis(fejl.vand));
@@ -87,6 +101,7 @@ for (const type of ['aaben', 'hule', 'oeer']) {
   tjek('ingen startplads i en lukket lomme', !fejl.lukket.length, vis(fejl.lukket));
   if (type === 'oeer') tjek('plads til kunder på hver ø', !fejl.oe.length, vis(fejl.oe));
   if (type === 'aaben') tjek('dalene har mindst én bro', !fejl.bro.length, vis(fejl.bro));
+  if (type === 'aaben') tjek('mindst én kanal ned til havet inde på banen', !fejl.kanal.length, vis(fejl.kanal));
   tjek('ingen løse stumper under 900 px', !fejl.stumper.length, vis(fejl.stumper));
   tjek('ingen små luftbobler under 200 px', !fejl.bobler.length, vis(fejl.bobler));
   tjek('pynten står på jorden (rigtig kontakt, fri luft over)', !fejl.pynt.length, vis(fejl.pynt));
@@ -101,8 +116,8 @@ for (const type of ['aaben', 'hule', 'oeer']) {
 
   // En rigtig kampstart.
   let iVand = 0, paaMine = 0, underPynt = 0, luft = 0;
-  for (let i = 0; i < 12; i++) {
-    const v = lavVerden({ froe: testFroe(400 + i), banetype: type, hold: lavHold(2, 4),
+  for (const kf of kamp) {
+    const v = lavVerden({ froe: kf, banetype: type, hold: lavHold(2, 4),
       cfg: { turTicks: 2700, kampTicks: 108000, vind: true, vejr: 'auto', banetype: type } });
     v.startKamp();
     for (const b of v.baevere) {
@@ -117,6 +132,11 @@ for (const type of ['aaben', 'hule', 'oeer']) {
   tjek('kampstart: ingen kunde på en mine (150 wu)', paaMine === 0, `${paaMine}`);
   tjek('kampstart: ingen kunde under en stor pynteting', underPynt === 0, `${underPynt}`);
 }
+
+const raekke = (a, n) => Array.from({ length: n }, (_, i) => testFroe(a + i));
+for (const type of ['aaben', 'hule', 'oeer']) tjekBaner(type, raekke(300, N), raekke(400, 12));
+// De nye arketyper (story 003), tvunget over mange frø.
+for (const [type, ark] of NYE_ARKETYPER) if (type !== 'fort') tjekBaner(type, froeMed(type, ark, 40, 1000), froeMed(type, ark, 8, 3000), ark);
 
 overskrift('findStartpladser efter kratere');
 {

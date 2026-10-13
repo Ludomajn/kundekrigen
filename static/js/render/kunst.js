@@ -1093,6 +1093,105 @@ export const HAANDVAABEN = {
     g.fillStyle = '#3A424A'; g.font = '900 30px Poppins, Calibri, sans-serif';
     g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText('F5', cx, cy - 5);
   },
+  frugtkurv(g) {                            // frugtordningen: flettet kurv fuld af frugt
+    const cx = 128, cy = 74;
+    hvFelt(g, '#F2C230', () => { g.beginPath(); g.ellipse(cx - 28, cy - 22, 30, 12, -0.5, 0, Math.PI * 2); });
+    hvFelt(g, '#D4A620', () => { g.beginPath(); g.ellipse(cx - 22, cy - 18, 24, 6, -0.5, 0, Math.PI * 2); });
+    hvFelt(g, '#D9453A', () => { g.beginPath(); g.arc(cx + 4, cy - 22, 17, 0, Math.PI * 2); });
+    hvFelt(g, '#7DC06A', () => { g.beginPath(); g.arc(cx + 30, cy - 18, 15, 0, Math.PI * 2); });
+    hvFelt(g, '#F28C28', () => { g.beginPath(); g.arc(cx - 6, cy - 6, 14, 0, Math.PI * 2); });
+    hvFelt(g, 'rgba(255,255,255,.4)', () => { g.beginPath(); g.ellipse(cx - 2, cy - 30, 5, 3, -0.5, 0, Math.PI * 2); });
+    const kurv = () => { g.beginPath(); g.moveTo(cx - 62, cy - 8); g.lineTo(cx + 62, cy - 8);
+      g.lineTo(cx + 48, cy + 40); g.quadraticCurveTo(cx, cy + 48, cx - 48, cy + 40); g.closePath(); };
+    hvFelt(g, '#B98A52', kurv);
+    g.save(); kurv(); g.clip();
+    hvFelt(g, '#9A6E3C', () => { g.beginPath(); g.rect(cx - 70, cy + 22, 140, 30); });
+    g.strokeStyle = '#8A5F3A'; g.lineWidth = 4;
+    for (let y = cy + 2; y < cy + 46; y += 11) { g.beginPath(); g.moveTo(cx - 70, y); g.lineTo(cx + 70, y); g.stroke(); }
+    for (let x = cx - 56; x < cx + 60; x += 16) { g.beginPath(); g.moveTo(x, cy - 8); g.lineTo(x + 4, cy + 48); g.stroke(); }
+    g.restore();
+    hvFelt(g, '#D4A87A', () => { g.beginPath(); g.roundRect(cx - 66, cy - 14, 132, 10, 5); });
+    g.strokeStyle = '#8A5F3A'; g.lineWidth = 6; g.lineCap = 'round';
+    g.beginPath(); g.moveTo(cx - 50, cy - 12); g.quadraticCurveTo(cx, cy - 76, cx + 50, cy - 12); g.stroke();
+  },
+  banan(g) {                                // frugtordningens splinter: en banan
+    const cx = 128, cy = 64;
+    const krop = () => { g.beginPath(); g.moveTo(cx - 58, cy - 22);
+      g.quadraticCurveTo(cx - 10, cy + 46, cx + 56, cy - 14);
+      g.quadraticCurveTo(cx + 2, cy + 22, cx - 58, cy - 22); g.closePath(); };
+    hvFelt(g, '#F2C230', krop);
+    g.save(); krop(); g.clip();
+    hvFelt(g, '#D4A620', () => { g.beginPath(); g.ellipse(cx, cy + 30, 70, 18, 0, 0, Math.PI * 2); });
+    g.restore();
+    hvFelt(g, '#FFE9A0', () => { g.beginPath(); g.ellipse(cx - 6, cy + 6, 22, 4, 0.25, 0, Math.PI * 2); });
+    hvFelt(g, '#5E432B', () => { g.beginPath(); g.roundRect(cx - 66, cy - 28, 12, 9, 3); });
+    hvFelt(g, '#3A424A', () => { g.beginPath(); g.arc(cx + 56, cy - 14, 4, 0, Math.PI * 2); });
+  },
+  kalender(g) {                             // mødeindkaldelsen: et kalenderblad med rød ring
+    const cx = 128, x0 = cx - 46, y0 = 18, w = 92, h = 92;
+    hvFelt(g, '#FFFFFF', () => { g.beginPath(); g.roundRect(x0, y0, w, h, 10); });
+    hvFelt(g, '#E6E9EC', () => { g.beginPath(); g.roundRect(x0, y0 + h - 14, w, 14, [0, 0, 10, 10]); });
+    hvFelt(g, '#D8402C', () => { g.beginPath(); g.roundRect(x0, y0, w, 24, [10, 10, 0, 0]); });
+    for (const x of [x0 + 22, x0 + w - 22]) {
+      hvFelt(g, '#3A424A', () => { g.beginPath(); g.roundRect(x - 4, y0 - 10, 8, 20, 4); });
+    }
+    g.fillStyle = '#C9CED3';
+    for (let r = 0; r < 3; r++) for (let k = 0; k < 4; k++) g.fillRect(x0 + 10 + k * 20, y0 + 34 + r * 16, 12, 9);
+    // Mødet: én dag er ringet ind med rødt — dér skal den hen.
+    g.strokeStyle = '#D8402C'; g.lineWidth = 4;
+    g.beginPath(); g.ellipse(x0 + 56, y0 + 54, 14, 11, -0.2, 0, Math.PI * 2); g.stroke();
+    g.fillStyle = '#FFFFFF'; g.font = '900 13px Poppins, Calibri, sans-serif';
+    g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText('MØDE', cx, y0 + 13);
+  },
+  kaffekande(g) {                           // kaffeulykken: en dampende kaffekande
+    const cx = 120, cy = 70;
+    hvFelt(g, '#2A3036', () => { g.beginPath(); g.roundRect(cx - 30, cy - 50, 60, 16, [8, 8, 0, 0]); });
+    const glas = () => { g.beginPath(); g.moveTo(cx - 34, cy - 36); g.lineTo(cx + 34, cy - 36);
+      g.lineTo(cx + 46, cy + 40); g.quadraticCurveTo(cx, cy + 50, cx - 46, cy + 40); g.closePath(); };
+    hvFelt(g, '#D8E4EA', glas);
+    g.save(); glas(); g.clip();
+    hvFelt(g, '#5A3420', () => { g.beginPath(); g.rect(cx - 60, cy - 6, 120, 60); });
+    hvFelt(g, '#7A4A2C', () => { g.beginPath(); g.rect(cx - 60, cy - 6, 120, 8); });
+    hvFelt(g, 'rgba(255,255,255,.45)', () => { g.beginPath(); g.rect(cx - 26, cy - 34, 8, 70); });
+    g.restore();
+    hvFelt(g, '#2A3036', () => { g.beginPath(); g.moveTo(cx - 34, cy - 36); g.lineTo(cx - 54, cy - 44); g.lineTo(cx - 34, cy - 26); g.closePath(); });
+    g.strokeStyle = '#2A3036'; g.lineWidth = 9; g.lineCap = 'round';
+    g.beginPath(); g.moveTo(cx + 38, cy - 26); g.quadraticCurveTo(cx + 74, cy - 16, cx + 44, cy + 26); g.stroke();
+    g.strokeStyle = 'rgba(255,255,255,.75)'; g.lineWidth = 5;
+    for (const dx of [-10, 8]) {
+      g.beginPath(); g.moveTo(cx + dx, cy - 56); g.bezierCurveTo(cx + dx - 10, cy - 66, cx + dx + 10, cy - 74, cx + dx, cy - 84); g.stroke();
+    }
+  },
+  kaffe(g) {                                // kaffeulykkens projektil: en brændende varm dråbe
+    const cx = 128, cy = 70;
+    const draabe = () => { g.beginPath(); g.moveTo(cx, cy - 46);
+      g.bezierCurveTo(cx + 12, cy - 20, cx + 32, cy - 2, cx + 32, cy + 16);
+      g.arc(cx, cy + 16, 32, 0, Math.PI);
+      g.bezierCurveTo(cx - 32, cy - 2, cx - 12, cy - 20, cx, cy - 46); g.closePath(); };
+    hvFelt(g, '#5A3420', draabe);
+    g.save(); draabe(); g.clip();
+    hvFelt(g, '#43261A', () => { g.beginPath(); g.arc(cx + 14, cy + 30, 30, 0, Math.PI * 2); });
+    g.restore();
+    hvFelt(g, '#C98A5A', () => { g.beginPath(); g.ellipse(cx - 12, cy + 4, 7, 11, 0.3, 0, Math.PI * 2); });
+    hvFelt(g, '#F28C28', () => { g.beginPath(); g.arc(cx + 18, cy - 20, 7, 0, Math.PI * 2); });
+    hvFelt(g, '#FFD86F', () => { g.beginPath(); g.arc(cx + 18, cy - 20, 3.5, 0, Math.PI * 2); });
+  },
+  kontorstol(g) {                           // turbostolen: kontorstol med raketmotor
+    const cx = 128;
+    hvFelt(g, '#2E6DB4', () => { g.beginPath(); g.roundRect(cx - 4, 8, 50, 62, 14); });      // ryglæn
+    hvFelt(g, '#255A96', () => { g.beginPath(); g.roundRect(cx + 26, 8, 20, 62, [0, 14, 14, 0]); });
+    hvFelt(g, '#2E6DB4', () => { g.beginPath(); g.roundRect(cx - 50, 62, 92, 18, 9); });       // sæde
+    hvFelt(g, '#255A96', () => { g.beginPath(); g.roundRect(cx - 50, 72, 92, 8, [0, 0, 9, 9]); });
+    hvFelt(g, '#6B737B', () => { g.beginPath(); g.roundRect(cx - 8, 80, 12, 22, 3); });         // stang
+    hvFelt(g, '#3A424A', () => { g.beginPath(); g.roundRect(cx - 48, 100, 92, 8, 4); });        // fod
+    for (const x of [cx - 44, cx - 2, cx + 40]) hvFelt(g, '#2A3036', () => { g.beginPath(); g.arc(x, 112, 7, 0, Math.PI * 2); });
+    // Raketten bag ryglænet: en rød dyse med en gul flamme.
+    hvFelt(g, '#D9453A', () => { g.beginPath(); g.roundRect(cx + 46, 24, 26, 46, 8); });
+    hvFelt(g, '#B93529', () => { g.beginPath(); g.roundRect(cx + 60, 24, 12, 46, [0, 8, 8, 0]); });
+    hvFelt(g, '#3A424A', () => { g.beginPath(); g.moveTo(cx + 48, 70); g.lineTo(cx + 70, 70); g.lineTo(cx + 74, 80); g.lineTo(cx + 44, 80); g.closePath(); });
+    hvFelt(g, '#F28C28', () => { g.beginPath(); g.moveTo(cx + 46, 80); g.quadraticCurveTo(cx + 59, 126, cx + 72, 80); g.closePath(); });
+    hvFelt(g, '#FFD86F', () => { g.beginPath(); g.moveTo(cx + 52, 80); g.quadraticCurveTo(cx + 59, 108, cx + 66, 80); g.closePath(); });
+  },
   scanner(g) {                              // stregkodescanner (pistolgreb)
     hvFelt(g, '#F2C230', () => { g.beginPath(); g.moveTo(40, 40); g.lineTo(200, 34); g.lineTo(236, 50);
       g.lineTo(236, 76); g.lineTo(40, 76); g.closePath(); });
@@ -1395,6 +1494,12 @@ export const VAABEN_STR = {
   flag: 26,
   tonerpatron: 12,     // tonerkanonens projektil
   faxmaskine: 14,      // faxregnens projektil
+  frugtkurv: 22,       // frugtordningen, holdt og kastet
+  banan: 9,            // frugtordningens bananer
+  kalender: 17,        // mødeindkaldelsen
+  kaffekande: 18,      // kaffeulykken
+  kaffe: 8,            // kaffeulykkens dråber
+  kontorstol: 30,      // turbostolen: kunden sidder på den
 };
 
 const maalCache = new Map();

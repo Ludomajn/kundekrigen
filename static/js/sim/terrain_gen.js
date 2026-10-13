@@ -7,7 +7,7 @@
  *   fort   to (eller flere) borge efter Worms' fort-tilstand. Frøet vælger
  *          en SILUET (borg, tvillinger, spir, ringmur, bastion) og et
  *          LANDSKAB imellem og omkring borgene (hav, skær, ø, bakke, bro,
- *          kløft, sø), borgenes højde og hvor langt fra hinanden de står.
+ *          kløft, sø, port), borgenes højde og hvor langt fra hinanden de står.
  *          Borgene er altid spejlede og ens, og ingen kan gå eller hoppe
  *          over til fjenden (valideres på masken, se fortHopSikker).
  *   oeer, hule, aaben   naturbanerne: bane_natur.js.
@@ -24,7 +24,7 @@ import { lavRng, fbm1 } from '../core/rng.js';
 import { Terraen, LUFT, JORD, FJELD, MUR } from './terrain.js';
 import {
   BANE_B, BANE_H, VAND_NIVEAU, FJELD_BUND, SKEMAER, vaelgVaegtet, traekker, raekkevidde,
-  standpladser, findKrydsning, placerPynt, glat,
+  standpladser, findKrydsning, placerPynt, glat, vaelgNy,
 } from './baneregler.js';
 import { genererNatur } from './bane_natur.js';
 
@@ -192,6 +192,7 @@ export function genererSpilbar(froe, type, antalBaevere, layout = null, forsoeg 
  *   kloeft  borgene står på høje klipper med land bagud og en dyb kløft med
  *           overhængende vægge imellem
  *   soe     borgene står på lavt land, og en sø med strande skiller dem
+ *   port    en klippeport midt i havet med et stort hul gennem foden
  * Alt, hvad der ikke hører til en borg (støtterne, øen, bakken), står uden
  * for hoppets rækkevidde fra begge borge: ingen kan hoppe derud og videre.
  *
@@ -268,7 +269,7 @@ const FORT_HOLD = [null,
 /* Landskaberne, hvor borgene står på land (ellers står de på klipper i havet). */
 const PAA_LAND = new Set(['kloeft', 'soe']);
 /* Borgenes løft over standardhøjden pr. landskab (wu, trukket pr. kamp). */
-const LOEFT = { hav: [0, 170], skaer: [0, 110], oe: [0, 90], bakke: [0, 100], bro: [0, 60], kloeft: [110, 230], soe: [20, 80] };
+const LOEFT = { hav: [0, 170], skaer: [0, 110], oe: [0, 90], bakke: [0, 100], bro: [0, 60], kloeft: [110, 230], soe: [20, 80], port: [0, 100] };
 
 /** Normalisér layoutet: 1-6 klinikker, 1-8 kunder pr. klinik. */
 export function fortLayout(layout, antalBaevere = 4) {
@@ -290,7 +291,8 @@ const rakkevidde = (d) => raekkevidde(d);
 function fortStil(froe, tving = null, enkel = false) {
   const r = traekker(froe, 0x2545f491);
   const S = SKEMAER.fort;
-  const landskab0 = vaelgVaegtet(r, S.landskaber);
+  // De nye landskaber trækkes særskilt (baneregler.vaelgNy): r's rækkefølge er den gamle.
+  const landskab0 = vaelgNy(froe, S.nye, vaelgVaegtet(r, S.landskaber));
   const siluet = vaelgVaegtet(r, S.siluetter);
   const tal = [];
   for (let i = 0; i < 24; i++) tal.push(r());
@@ -851,7 +853,7 @@ function frontBehov(ls, v, side, p, havF) {
       for (const s of liste) {
         const rT = s.r + 12;
         s.kl = klaring(side, s.h - 16);
-        if (s.par) { s.a = a0 + rT + 60 + Math.round(p[8 + liste.indexOf(s)] * 110); a0 = s.a + rT; }
+        if (s.par) { s.a = a0 + rT + 40 + Math.round(p[8 + liste.indexOf(s)] * 60); a0 = s.a + rT; }   // tættere: fortene nærmere
         else { s.a = 0; a0 = rT; }
         halv = Math.max(halv, s.a + rT + s.kl);
       }
@@ -859,7 +861,7 @@ function frontBehov(ls, v, side, p, havF) {
       return { min, maks: min + 240, stoetter: liste };
     }
     case 'oe': {
-      const wi = 160 + Math.round(p[0] * 150), ht = V + 90 + Math.round(p[1] * 200);
+      const wi = 120 + Math.round(p[0] * 100), ht = V + 90 + Math.round(p[1] * 200);   // smallere: fortene tættere
       const ruin = p[2] < 0.6 ? { rw: 24 + Math.round(p[3] * 16), rh: 80 + Math.round(p[4] * 100) } : null;
       const form = p[5] < 0.4 ? 'plateau' : p[5] < 0.75 ? 'to' : 'bakke';     // flad top, to bakker, eller én
       const min = Math.max(havF, 2 * (wi + 30 + klaring(side, V + 1)));
@@ -868,13 +870,25 @@ function frontBehov(ls, v, side, p, havF) {
     case 'bakke': {
       // Bjerget står HELT uden for hoppets rækkevidde (også ved vandkanten),
       // så dets skråninger kan være nok så gangbare.
-      const wb = 190 + Math.round(p[0] * 150);
+      const wb = 150 + Math.round(p[0] * 110);                 // smallere: fortene tættere
       const thMax = Math.min(side.yHi - 60, V + 720);
       const th = Math.round(V + 280 + p[1] * Math.max(0, thMax - V - 280));
       const form = p[2] < 0.35 ? 'kegle' : p[2] < 0.7 ? 'plateau' : 'to';
       const min = Math.max(havF, 2 * (wb + 30 + klaring(side, V + 1)));
       return { min, maks: min + 220, wb, th, form, terrasser: p[6] < 0.6,
                bue: p[3] < 0.55 ? { aw: 44 + Math.round(p[4] * 40), ah: 70 + Math.round(p[5] * 60) } : null };
+    }
+    case 'port': {
+      // Klippeporten: en bred klippe med flad top og et stort hul igennem
+      // fra under vandet, så lave skud går igennem og høje må over. Står
+      // helt uden for hoppets rækkevidde (som bakken).
+      const hs = 180 + Math.round(p[0] * 100);                 // smallere: fortene tættere
+      const ht = Math.round(V + 220 + p[1] * Math.max(0, Math.min(side.yHi - 80, V + 540) - V - 220));
+      const dk = 50 + Math.round(p[2] * 30);
+      const ow = Math.round(Math.min(hs * 0.8 - 70, hs * (0.42 + 0.2 * p[3])));
+      const oh = Math.round((ht - dk - V) * (0.62 + 0.25 * p[4]));
+      const min = Math.max(havF, 2 * (hs + 30 + klaring(side, V + 1)));
+      return { min, maks: min + 220, hs, ht, dk, ow, oh };
     }
     default: return { min: havF, maks: havF + 900 };
   }
@@ -968,7 +982,9 @@ function fortPlanTrim(L, bBredde, froe, trim, stil) {
     const ff = slags.filter((s) => s === 'ff').length;
     if (ff) {
       const ekstra = Math.min(behov.maks - behov.min, Math.floor((plads - sum - gSum) / ff));
-      const e = Math.round(ekstra * (0.15 + 0.85 * stil.spred));
+      // Forfatterens ønske (2026-10-13): fortene tættere på hinanden — kun en
+      // lille del af den ledige plads spreder dem; minimum (ingen kan hoppe over) står.
+      const e = Math.round(ekstra * (0.05 + 0.25 * stil.spred));
       for (let i = 0; i < gab.length; i++) if (slags[i] === 'ff') gab[i] += e;
       gSum = gab.reduce((a, b) => a + b, 0);
     }
@@ -1166,7 +1182,7 @@ function bygFortBane(plan, froe, bBredde, bHoejde) {
   t.snavs = { x0: 0, y0: 0, x1: bBredde - 1, y1: bHoejde - 1 };
   t.vandNiveau = VAND_NIVEAU;
   const TEMA = { hav: 'klippe', bro: 'klippe', skaer: 'klippe', oe: ['eng', 'strand'], bakke: ['klippe', 'eng'],
-                 kloeft: ['eng', 'skov'], soe: ['eng', 'strand'] }[plan.landskab.navn];
+                 kloeft: ['eng', 'skov'], soe: ['eng', 'strand'], port: ['klippe', 'strand'] }[plan.landskab.navn];
   t.pyntTema = Array.isArray(TEMA) ? TEMA[plan.landskab.tema] : TEMA;
   t.pynt = placerPynt(t, t.pyntTema, froe);
   return t;
@@ -1373,6 +1389,24 @@ function bygLandskab(t, plan, froe) {
         }
       }
       neutral.push({ x0: Math.floor(m - wb - 40), x1: Math.ceil(m + wb + 40), hul: g.i });
+    } else if (ls === 'port') {
+      // Klippeporten: flad top med lodrette sider, og hullet gennem foden
+      // fra under vandet op til en rund bue under dækket.
+      const pFroe = fr(0x7a3d2e91);
+      const { hs, ht, ow, oh } = B;
+      for (let x = xa; x <= xm; x++) {
+        const a = m - x;
+        if (a > hs + 200) continue;
+        let topY;
+        if (a <= hs) {
+          const u = a / hs;
+          topY = V + (ht - V) * (1 - glat((u - 0.82) / 0.18)) + (fbm1(a * 0.02, pFroe, 2) - 0.5) * 24 * (1 - u * u);
+          topY = Math.max(topY, V + 2 + (1 - u) * 8);
+        } else topY = V - (a - hs) * 0.9;
+        if (topY > bund[x]) toKol(g, x, bund[x], topY, JORD);
+        if (a < ow) toKol(g, x, V - 70, V + oh * Math.sqrt(1 - (a / ow) * (a / ow)), LUFT);
+      }
+      neutral.push({ x0: Math.floor(m - hs - 40), x1: Math.ceil(m + hs + 40), hul: g.i });
     } else if (ls === 'bro') {
       // Den brudte stenbro: dæk i plintens højde fra facaden ud i hullet,
       // piller ned til havbunden og rundbuer imellem; enden er brækket af,

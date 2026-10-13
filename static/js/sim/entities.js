@@ -80,6 +80,8 @@ export function lavProjektil(id, opt) {
     fyld: opt.fyld || null,              // { r }: bygger terræn, hvor den lander (papirbunken)
     klynge: opt.klynge || null,
     smitte: opt.smitte || null,          // { r, turer }: COVID-skyen ved nedslag
+    soeg: opt.soeg || null,              // { x, y, efter, varighed, fart, drej }: Mødeindkaldelsen
+    ild: opt.ild || null,                // { celler }: tænder ild ved nedslag (Kaffeulykken)
     lunte: opt.lunte ?? -1,              // i tick; -1 = detonerer ved nedslag
     ejer: opt.ejer ?? null,
     ejerHold: opt.ejerHold ?? null,

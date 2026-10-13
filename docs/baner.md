@@ -23,10 +23,33 @@ og derefter arketypens tilfældige parametre inden for faste grænser.
 
 | Type | Arketyper | Temaer / variation |
 |---|---|---|
-| Fort | siluet: borg, tvillinger, spir, ringmur, bastion · landskab: hav, skær, ø, bakke, bro, kløft, sø | højde (løft), afstand, tinder |
-| Øer | skærgård, hovedø, tvillinger | eng, skov, klippe, strand |
-| Grotte | storhal, kamre, tunnelnet | — |
-| Åbent land | bjergkæde, dale, plateauer | eng, skov, klippe |
+| Fort | siluet: borg, tvillinger, spir, ringmur, bastion · landskab: hav, skær, ø, bakke, bro, kløft, sø, **port** | højde (løft), afstand, tinder |
+| Øer | skærgård, hovedø, tvillinger, **atol** | eng, skov, klippe, strand |
+| Grotte | storhal, kamre, tunnelnet, **skakter** | — |
+| Åbent land | bjergkæde, dale, plateauer, **kløftland** (`kloefter`) | eng, skov, klippe |
+
+**De nye arketyper (story 003)** står i skemaets `nye` med hver sin chance
+(port 15 %, atol, skakter og kløftland 23 % — som en vægt på 3 ved siden af de
+gamle). De trækkes i et SÆRSKILT trin efter den gamle trækning
+(`baneregler.vaelgNy`, sit eget salt): den gamle rækkefølge af tal er
+uændret, så alle frø, der ikke rammer en ny arketype, giver præcis de samme
+baner som før. Farertestene (`test/farer_hjaelp.mjs`) slår `nye` fra, fordi
+de er skrevet mod bestemte frøs baner; de nye prøves i `kort_*.mjs`.
+
+Hvorfor netop de fire: hver læses på én gang og spiller anderledes end
+typens gamle arketyper.
+
+- **port** (fort): den eneste ting midt imellem, man kan skyde *igennem*.
+  Lave, lige skud går gennem hullet; høje må over porten. De gamle landskaber
+  tager enten de lige skud (bakke) eller slet ingen (hav, bro).
+- **atol** (øer): højt land yderst og lavt land i midten — det omvendte af
+  hovedøen. Holmene i lagunen er udsatte, armene giver dækning bag klinten.
+- **skakter** (grotte): den første lodrette grotte. Man kæmper på tværs af
+  skakterne i flere etager, kan falde ned gennem dem til søen og klatre op ad
+  hylderne; granater kan droppes ned gennem en skakt.
+- **kløftland** (åbent land): én høj slette, så næsten alle står i samme
+  højde, men kløfterne kan kun krydses med hop over broen/buen, teleport eller
+  byggeredskaber. Plateauerne derimod er højdeforskelle; dalene er bløde.
 
 ## Fælles regler (alle baner)
 
@@ -124,9 +147,15 @@ Det, der aldrig ændres (spillets garantier):
 | **bro** | en brudt stenbro på rundbuer ud fra hver borgs plint, i plintens højde, med et hul midt på, der er bredere end et hop. Man kan gå ud på sin egen bro. Stumperne ligger under vandet. |
 | **kløft** | borgene står på høje klipper (løft 110-230 wu) med land bagud til kysten og bakker; en dyb kløft med overhængende vægge skiller dem. Forpladsen foran facaden er 50-180 wu. |
 | **sø** | borgene står på lavt land med bakker bagud; en sø med strande skiller dem. |
+| **port** | en klippeport midt i havet: 360-560 wu bred, flad top 220-540 wu over vandet med lodrette sider, og en rund bue gennem foden fra under vandet op til 62-87 % af højden under et dæk på 50-80 wu. Står helt uden for hoppets rækkevidde (som bakken). |
 
 Afstanden mellem borgene og deres løft trækkes også, så borgene står
-forskellige steder og i forskellige højder fra kamp til kamp.
+forskellige steder og i forskellige højder fra kamp til kamp. Siden 2026-10-13
+(forfatterens ønske: fortene tættere på hinanden) spreder kun 5-30 % af den
+ledige plads borgene, og øen, bakken, porten og skærene er smallere. Hullet
+mellem to borge (2 hold à 1, 300 frø) faldt fra median 1167 wu (maks 2177) til
+1017 wu (maks 1870). Det korteste er stadig minimum fra hopreglen nedenfor —
+det er det store led, når der står noget midt imellem.
 
 ### Ingen kan hoppe over
 
@@ -153,6 +182,7 @@ vandret (+ kapslens bredde). Reglerne:
 | **skærgård** | 4-7 øer i en række med sund på 90-400 wu imellem; broer over nogle af de smalle (under 270 wu). |
 | **hovedø** | én stor ø (40-56 % af banen) med flere toppe, en hule og en bue gennem kysten, og 2-4 småøer omkring, måske med broer. |
 | **tvillinger** | to store øer over for hinanden med et sund på 180-420 wu og 0-2 skær midt i; klinterne vender ud mod sundet. |
+| **atol** | ringens to arme yderst (hver 20-28 % af banen, 260-480 wu høje) med klinten ud mod det åbne hav og en jævn skråning ind mod en lav lagune (bunden 50 wu under vandet); 1-3 flade holme i lagunen (240-380 wu brede, 130-220 wu høje), broer over sunde under 260 wu (halvdelen). |
 
 - Hver ø har en form (kegle, plateau, to toppe, bakke eller en skæv klint), og
   toppene er flade nok til at stå på.
@@ -175,6 +205,7 @@ søer.
 | **storhal** | én stor hal næsten hele banen bred med runde ender, 2-4 søer i gulvet, søjler (på to ben med en bue imellem, så man kan gå igennem; nogle brækket over), drypsten fra loft og gulv og hylder. |
 | **kamre** | 3-5 kamre i forskellige højder med hvælvede lofter og gulve, der krummer op mod væggene, forbundet af gangbare tunneler (radius 46-62 wu, højst ~45° stejle) og måske en ekstra tunnel højere oppe. Det laveste kammer ligger ved vandet og har en sø. |
 | **tunnelnet** | tunneler i tre lag på tværs af banen (radius 48-78 wu), måske brudt ét sted, skrå ramper imellem, små kamre, hvor de mødes, og en stor sø i bunden. |
+| **skakter** | 2-4 lodrette skakter (110-170 wu brede) fra en sø under vandlinjen 1000-1260 wu op til et kammer i toppen, forbundet af vandrette gange i tre lag (det nederste altid helt igennem, de øvre 70 %), en gang fra hver yderste skakt ud mod banens ende med et kammer, og hylder skiftevis i hver side af skakten, 88-100 wu imellem (saltoen når ~113 wu op), aldrig foran en gang. |
 
 - Alle kamre, man kan nå fra en startplads, har gulv at stå på; lommer, man
   ikke kan komme ud af, markeres, så ingen starter i dem.
@@ -191,15 +222,21 @@ søer.
 | **bjergkæde** | 3-5 bjerge (kegle, to toppe, plateau eller klint) med dale og kanaler imellem, overhængende klinter og en bue gennem et smalt bjerg eller en hule. |
 | **dale** | bølgende land med 2-4 brede dale, hver med en kanal i bunden, og broer over 1-3 af kanalerne — mindst én bro, ellers prøves et nyt frø. |
 | **plateauer** | 3-5 flade plateauer i forskellige højder med stejle klinter, måske et trin; kanaler eller lave sadler imellem, broer over nogle af kanalerne og huler under plateauerne. |
+| **kløftland** | en høj slette (300-520 wu over vandet, hvert stykke ±110-150 wu) skåret af 2-4 dybe kløfter (bund 120-240 wu bred, vægge med stigning 3-6) ned i havet; halvdelen har en hylde halvvejs nede, nogle en overhængende kant, en tredjedel en bro, og måske én (aldrig alle) en naturlig stenbue over sig med et dæk på 60-90 wu. |
 
 - Højdekurven terrasseres og glattes, så der er store flader at kæmpe på.
 - Banens ender går altid ned i havet, så ingen kan campe i et hjørne.
+- Mindst én kanal går ned til havet inde på banen (ikke kun ved enderne);
+  `kort_spilbarhed.mjs` prøver det.
 - Lidt hulestøj dybt inde i landet giver huler, man kan grave sig ind i.
 
 ## Testene og billederne
 
 `test/README.md` beskriver testene (`node --no-warnings test/kort_alle.mjs`)
-og kontaktarkene (`node --no-warnings test/lav_billeder.mjs`). Målt med 50 frø
+og kontaktarkene (`node --no-warnings test/lav_billeder.mjs`; med en arketype
+som fjerde ord kun den, fx `lav_billeder.mjs oeer 12 0 atol`). De nye
+arketyper tvinges over mange frø i `kort_spilbarhed.mjs`, `kort_fort.mjs`
+og `kort_determinisme.mjs` (`kort_hjaelp.NYE_ARKETYPER`, `froeMed`). Målt med 50 frø
 pr. type (Jaccard-afstand mellem silhuetterne, 0 = ens, 1 = intet fælles):
 
 | Type | mindste | 5 % | median | før skemaerne (median) |

@@ -32,6 +32,10 @@ const TEGNING = {
   byggeskum:        { tegn: 'skumpistol',     rot: -0.15, fyld: 0.86 },
   traestammeregn:   { tegn: 'faktura',        rot: 0.22,  fyld: 0.78 },   // Kvartalsopkrævning
   covid:            { tegn: 'virus',          rot: 0.1,   fyld: 0.84 },   // COVID
+  frugtordning:     { tegn: 'frugtkurv',      rot: -0.15, fyld: 0.86 },   // Frugtordningen
+  moedeindkaldelse: { tegn: 'kalender',       rot: 0.15,  fyld: 0.8 },    // Mødeindkaldelsen
+  kaffeulykke:      { tegn: 'kaffekande',     rot: -0.2,  fyld: 0.84 },   // Kaffeulykken
+  turbostol:        { tegn: 'kontorstol',     rot: -0.12, fyld: 0.9 },    // Turbostolen
   staa_over:        { tegn: 'telefon',        rot: -0.35, fyld: 0.86 },
   overgiv:          { tegn: 'flag',           rot: -0.15, fyld: 0.84, kat: 'fare' },
 };
@@ -134,20 +138,19 @@ function tegnFlise(g, kat) {
   g.restore();
 }
 
-function tegnVaaben(g, kilde, rot, fyld) {
+function tegnVaaben(g, kilde, rot, fyld, kantFarve = '#FFFFFF', k = 4.5) {
   const c = beskaer(kilde);
   // Skalér, så den ROTEREDE tegning fylder flisen.
   const cos = Math.abs(Math.cos(rot)), sin = Math.abs(Math.sin(rot));
   const rb = c.width * cos + c.height * sin, rh = c.width * sin + c.height * cos;
   const skala = (STR * 0.8 * fyld) / Math.max(rb, rh);
   const w = c.width * skala, h = c.height * skala;
-  const hvid = silhuet(c, '#FFFFFF'), skygge = silhuet(c, 'rgba(4,20,30,.5)');
+  const hvid = silhuet(c, kantFarve), skygge = silhuet(c, 'rgba(4,20,30,.5)');
 
   g.save();
   g.translate(STR / 2, STR / 2 + 2);
   g.rotate(rot);
   g.drawImage(skygge, -w / 2 + 3, -h / 2 + 6, w, h);
-  const k = 4.5;                           // klistermærkekantens tykkelse
   for (let i = 0; i < 12; i++) {
     const a = (i / 12) * Math.PI * 2;
     g.drawImage(hvid, -w / 2 + Math.cos(a) * k, -h / 2 + Math.sin(a) * k, w, h);
@@ -158,10 +161,12 @@ function tegnVaaben(g, kilde, rot, fyld) {
 
 const cache = new Map();
 
-/** Data-URL til et våbens ikon, eller null hvis det ikke kan tegnes. */
-export function ikonURL(w) {
+/** Data-URL til et våbens ikon, eller null hvis det ikke kan tegnes.
+ *  fri: kun tegningen med en svag gul kant, uden flise (bjælkens cirkler). */
+export function ikonURL(w, fri = false) {
   if (!w) return null;
-  if (cache.has(w.id)) return cache.get(w.id);
+  const noegle = fri ? `${w.id}|fri` : w.id;
+  if (cache.has(noegle)) return cache.get(noegle);
   let url = null;
   try {
     const t = TEGNING[w.id];
@@ -171,18 +176,25 @@ export function ikonURL(w) {
       : lavHaandvaaben(t.tegn);
     if (kilde) {
       const c = lav(STR, STR), g = c.getContext('2d');
-      tegnFlise(g, t.kat || w.kategori);
-      tegnVaaben(g, kilde, t.rot, t.fyld);
+      if (fri) tegnVaaben(g, kilde, t.rot, t.fyld, 'rgba(255,216,111,.6)', 3);
+      else { tegnFlise(g, t.kat || w.kategori); tegnVaaben(g, kilde, t.rot, t.fyld); }
       url = c.toDataURL('image/png');
     }
   } catch { url = null; }
-  cache.set(w.id, url);
+  cache.set(noegle, url);
   return url;
 }
 
 /** Ikonet som HTML: brikken, eller den gamle stregtegning som reserve. */
-export function ikonHTML(w, klasse) {
-  const url = ikonURL(w);
+export function ikonHTML(w, klasse, fri = false) {
+  const url = ikonURL(w, fri);
   if (url) return `<img class="${klasse} vbrik" src="${url}" alt="" draggable="false">`;
   return `<svg class="${klasse}" viewBox="0 0 32 32"><use href="#${esc(w.ikon)}"/></svg>`;
 }
+
+/** Bjælkecirklens farve: rød for våben, blå for skjold og dækning, lilla for
+ *  redskaber (flytning, boring, stå over). */
+const BLAA = new Set(['gnavetand', 'papirbunke', 'byggeskum']);
+const LILLA = new Set(['gangtunnel', 'nedgravning', 'kabelbakke', 'turbostol']);
+export const farveGruppe = (w) =>
+  (BLAA.has(w.id) ? 'blaa' : LILLA.has(w.id) || w.kategori === 'meta' ? 'lilla' : 'roed');

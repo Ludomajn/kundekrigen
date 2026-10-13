@@ -622,19 +622,20 @@ function koblHaendelser() {
     }
     if (w?.arketype === 'naerkamp') bv?.slag();
     if (w?.arketype === 'luftangreb') {
-      visning.fx.fakturaRegn(e.x, e.retning ?? b?.retning ?? 1);
-      hud.banner('KVARTALSOPKRÆVNING!', 1800, 'advarsel');
+      if (e.vaaben === 'traestammeregn') visning.fx.fakturaRegn(e.x, e.retning ?? b?.retning ?? 1);
+      hud.banner(`${w.navn.toUpperCase()}!`, 1800, 'advarsel');
     }
     // Brugerens egne våbenlyde; resten er kontorlyde fra "400 Sounds Pack".
     // Skud, granater og infernoet er komiske og varieres (komisk()): ikke
     // hver gang — så bliver det det neutrale sus.
     const variation = { tone: 0.95 + Math.random() * 0.1 };
-    const komiskGruppe = { grenroer: 'tonerkanon', splintboesse: 'skud', egegranat: 'granat', koglebombe: 'inferno' }[e.vaaben];
+    const komiskGruppe = { grenroer: 'tonerkanon', splintboesse: 'skud', egegranat: 'granat', koglebombe: 'inferno',
+                           frugtordning: 'granat', moedeindkaldelse: 'tonerkanon' }[e.vaaben];
     const egen = komiskGruppe ? komisk(komiskGruppe)
       : e.vaaben === 'halesmaek' ? (Math.random() < 0.5 ? 'stemme_slag' : 'stemme_slag_2') : null;
     const kontor = {
       daemningsdynamit: 'opdatering_skud', baevermine: 'mine_laeg', papirbunke: 'papir_kast',
-      covid: 'covid_host',
+      covid: 'covid_host', kaffeulykke: 'plask', turbostol: 'skum',
     }[e.vaaben];
     // Faxen er 9,5 s lang; den må ikke holde kanalen, mens fakturaerne slår ned.
     if (e.vaaben === 'traestammeregn') lyd.afspil('stemme_fax', { vol: 0.85, maksSek: 2.5 });
@@ -760,8 +761,7 @@ function koblHaendelser() {
     const jubel = vindere.find((b) => karakterLyd(b, 'glad'));
     if (jubel) replik(jubel, 'glad', { vigtig: true, altid: true });
     if (f) S.sangTimer = setTimeout(() => {
-      const sang = Math.random() < 0.5 ? 'stemme_vindersangen' : 'stemme_vindermusik_2';
-      if (S.tilstand === 'sejr') lyd.stemme(sang, { vigtig: true });
+      if (S.tilstand === 'sejr') lyd.stemme('stemme_vindermusik_2', { vigtig: true });
     }, 1150);
     S.festTimer = setTimeout(visResultat, f ? 6500 : 2800);
   });
@@ -867,6 +867,9 @@ function koblHaendelser() {
   });
   bus.paa('lunteSat', () => lyd.afspil('klik'));
   bus.paa('redskabStart', (e) => {
+    if (e.slags === 'turbo' && S.verden.baevere.find((x) => x.id === e.baever && erMin(x))) {
+      hud.banner('Pil op giver gas · venstre/højre styrer · mellemrum slukker', 2400);
+    }
     if (e.slags !== 'bor') return;
     lyd.afspil('stemme_systemnedbrud', { vol: 0.9 });
     if (S.verden.baevere.find((x) => x.id === e.baever && erMin(x))) {
@@ -1314,6 +1317,8 @@ function opdaterVisning(dt, tid) {
     bv.opdater(b, dt, medGrav.has(b.id), !!S.jubler?.has(b.id));
     const spids = bv.boreSpids();                 // kun mens der bores
     if (spids) vi.fx.boreStoev(spids.x, spids.y, spids.dx, spids.dy);
+    // Turbostolens raketmotor sprutter bag stolen, mens den flyver.
+    if (b.turbo && !b.doed && !b.paaJorden && Math.random() < 0.7) vi.fx.ildSpor(b.x - b.retning * 13, b.y + 2);
   }
 
   // Sigte: den forudsagte bane plus en kraftbue om bæveren.
@@ -1351,7 +1356,10 @@ function opdaterVisning(dt, tid) {
   }
 
   ryddMarkoer();
-  if (S.markoerTilstand) vi.sigte.visMarkoer(S.markoer.x, S.markoer.y);
+  // Mødeindkaldelsens mål bliver stående, mens man sigter.
+  const maalVises = S.maalSat?.turNr === v.tur.turNr && S.maalSat.vaaben === v.valgtVaaben &&
+                    v.tur.tilstand === TIL.SPILLER_AKTIV;
+  if (S.markoerTilstand || maalVises) vi.sigte.visMarkoer(S.markoer.x, S.markoer.y);
   else vi.sigte.skjulMarkoer();
 
   vi.debug.opdater();
@@ -1552,7 +1560,8 @@ if (new URLSearchParams(location.search).has('film')) spilFilm();
  *  Ryddes her, ét sted — ellers kunne den hænge ved og låse piletasterne. */
 function markoerGaelder() {
   const v = S.verden, akt = v?.aktivBaever();
-  return !!(akt && erMin(akt) && v.tur.tilstand === TIL.SPILLER_AKTIV && v.vaabenNu()?.sigte === 'markoer');
+  const w = v?.vaabenNu();
+  return !!(akt && erMin(akt) && v.tur.tilstand === TIL.SPILLER_AKTIV && (w?.sigte === 'markoer' || w?.maal));
 }
 function ryddMarkoer() {
   if (!S.markoerTilstand || markoerGaelder()) return;
@@ -1728,6 +1737,24 @@ tast.paaSlip((handling) => {
   lyd.ladelyd(null);
 
   const w = v.vaabenNu();
+  // Mødeindkaldelsen (w.maal): første tryk åbner markøren, det andet sætter
+  // mødet — først det tredje skyder, med sigte og kraft som ellers.
+  const maalSat = S.maalSat?.turNr === v.tur.turNr && S.maalSat.vaaben === w?.id;
+  if (w?.maal && !maalSat) {
+    if (!S.markoerTilstand) {
+      S.markoerTilstand = true;
+      S.markoer.x = akt.x + akt.retning * 260;
+      S.markoer.y = akt.y + 120;
+    } else {
+      afsend({ k: 'handling', seq: S.seq++, h: 'markoer',
+               x: S.markoer.x, y: S.markoer.y, retning: S.markoer.retning });
+      S.markoerTilstand = false;
+      S.maalSat = { turNr: v.tur.turNr, vaaben: w.id };
+      hud.banner('Mødet er sat — sigt og skyd', 1600);
+    }
+    sendInput();
+    return;
+  }
   if (w?.sigte === 'markoer' && !S.markoerTilstand) {
     // Markørvåben: første tryk åbner markørtilstand i stedet for at affyre.
     S.markoerTilstand = true;
@@ -1739,6 +1766,7 @@ tast.paaSlip((handling) => {
   if (S.markoerTilstand) {
     afsend({ k: 'handling', seq: S.seq++, h: 'markoer',
              x: S.markoer.x, y: S.markoer.y, retning: S.markoer.retning });
+    S.maalSat = null;                    // markøren er flyttet: mødet skal sættes igen
     S.markoerTilstand = false;
     sendInput();
   }

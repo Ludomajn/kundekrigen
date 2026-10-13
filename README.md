@@ -99,7 +99,7 @@ afslører nedslaget.
 
 ## Arsenalet
 
-Femten våben plus to meta-valg, datadrevet i `static/js/sim/weapons.js`. Alle
+Nitten våben plus to meta-valg, datadrevet i `static/js/sim/weapons.js`. Alle
 våben har begrænset ammunition pr. klinik; mere kommer fra forsyningskasserne
 (se nedenfor). Modellerne er flade tegninger i Kenney-pakkernes formsprog
 (`kunst.HAANDVAABEN`); det, man kaster, er det, man holdt i hånden.
@@ -116,18 +116,22 @@ tegnes foran fingrene; sigtevåben sidder i hånden og drejes med sigtet.
 |---|---|---|---|
 | Tonerkanon | Skyts | 8 | Skyder tonerpatroner, buer med vinden — arbejdshesten |
 | Stregkodescanner | Skyts | 2 | Øjeblikkelig stråle til det, den faktisk rammer: 34 skade og et ordentligt skub. To scanninger pr. ammo; turen slutter efter den anden |
+| Mødeindkaldelsen | Skyts | 1 | Målsøgende: vælg mødet med markøren (`Mellemrum`, `T` springer til fjender, `Mellemrum` igen), sigt og skyd. Flyver først som et skud og søger så mod målet |
 | Tvangsopdatering | Skyts | 1 | Kort stråle (150 wu). Rammer den en fjende, står den og opdaterer og springer sin næste tur over. Ingen skade |
 | Datalæk-bomben | Kast | 3 | Stor bombe med lunte (`F`). Hopper, ignorerer vinden og giver et stort brag: 55 skade i 74 wu |
 | Integrations inferno | Kast | 1 | Springer i fem løse taster ved detonation |
+| Frugtordningen | Kast | 0 | Kun fra kasser. Frugtkurv med lunte (`F`), der springer i fem hoppende bananer, som går af hver for sig |
 | Klageklask | Nærkamp | 3 | Et klask med ringbindet efter et kort sving: 50 skade og et hårdt skub. Én gang pr. tur |
 | Phishing-mine | Udstyr | 2 | Ligner en mail. Armeres efter 5 s (minen tæller ned), så du kan nå væk; derefter udløses den af alle, der kommer for tæt på |
 | Hjemmearbejde | Udstyr | 1 | Kunden arbejder hjemme: al skade og alle skub preller af, til klinikkens næste tur. Turen fortsætter. Beskytter ikke mod vand, at falde ud af banen eller pludselig død |
 | Systemnedbrud | Udstyr | 1 | Et langsomt bor, man styrer med pilene. Starter lige ned; tryk `Mellemrum` igen for at stoppe. Borer aldrig ned i vandet |
+| Turbostolen | Udstyr | 1 | Kontorstol med raketmotor: pil op giver gas, venstre/højre styrer, begrænset brændstof. Turen slutter ved landing, tom tank eller `Mellemrum` |
 | Fjernsupport | Udstyr | 1 | Teleport, én gang pr. kamp — kommer aldrig i kasserne. Er der ikke plads, afvises den, og man beholder både skuddet og turen |
 | Papirbunke | Terræn | 2 | Kastes og bliver liggende som en bakke — dækning, bro eller fyld i et krater |
 | Kabelbakke | Terræn | 1 | Rampe skråt op foran kunden; turen fortsætter, så man kan gå op og skyde |
 | Byggeskum | Terræn | 1 | Sprøjter en klump skum, hvor man peger (op til 360 wu væk); turen fortsætter |
 | Kvartalsopkrævning | Special | 0 | Kun fra kasser. Otte fakturaer regner ned over målet — vælg mål og retning |
+| Kaffeulykken | Special | 0 | Kun fra kasser. Skoldhed kaffe hældes lodret ned over målet (vælg mål som Kvartalsopkrævning) og tænder ild i den fælles ild (`docs/farer.md`) |
 | COVID | Special | 0 | Kun fra kasser. En virus, der smitter alle inden for 70 wu. De smittede mister 6 tålmodighed ved hvert turskift og smitter dem, der står tæt på (60 wu). Smitten går over efter tre turskift |
 | Sæt på hold · Opsig aftalen | Andet | ∞ | Stå over · overgiv |
 
@@ -217,7 +221,7 @@ følgerne) og `static/js/ui/haendelser.js` (lyd, effekter og mærket).
 - **Fortet er standardbanen** — som Worms' fort-tilstand: hver klinik har sin
   egen store borg af murværk (`MUR`: destruktibelt som jord). Hver kamp trækker
   en siluet (borg, tvillinger, spir, ringmur, bastion) og et landskab imellem
-  borgene (hav, skær, ø, bakke, bro, kløft, sø); landet imellem ligger altid
+  borgene (hav, skær, ø, bakke, bro, kløft, sø, port); landet imellem ligger altid
   uden for hoppeafstand af begge borge. Borgen har én etage pr. kunde, med
   kundernes rum i fortårnet mod fjenden bag et skydeskår og en brystning, så et
   lige skud fra fjendens tilsvarende etage aldrig når kunden. Borgene er
@@ -242,7 +246,10 @@ følgerne) og `static/js/ui/haendelser.js` (lyd, effekter og mærket).
 - **Femten våben** i syv arketyper, datadrevet i `static/js/sim/weapons.js`,
   med begrænset ammo og forsyningskasser, der rent faktisk falder ned.
 - **2–4 klinikker, op til 12 kunder**, fleksibelt ejerskab: en deltager kan styre
-  én kunde eller hele klinikken.
+  én kunde eller hele klinikken. Som udgangspunkt har hvert hold **3 kunder**
+  (`KUNDER_PR_HOLD` i `net/transport.js` og `rum.py`): et hold med færre spillere
+  fyldes op med tilfældige figurer, som holdets spillere styrer på skift — så fortet
+  har tre etager med én kunde på hver.
 - **Vind og vejr med rigtig fysik** — vejret skalerer vinden, sender
   vindstød og bremser vindfølsomme skud (se afsnittet om vejrfysik).
 - **Tilpasning** — navn, hudfarve, frisure, hårfarve, ansigt, bukser og sko.
@@ -588,5 +595,4 @@ mellem de to bliver synlig med det samme.
 ## Ikke med i denne udgave
 
 - **Vidjereb (ninjarebet)** — i enhver Worms-klon den største enkeltstående
-  tidssluger. De femten våben giver et helt spil uden det.
-- Strækvåben: halepropel, bananbombe, målsøgende gren, napalm.
+  tidssluger. De nitten våben giver et helt spil uden det.

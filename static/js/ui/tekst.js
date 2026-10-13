@@ -232,10 +232,11 @@ export const esc = (s) => String(s ?? '').replace(/[&<>"']/g,
 /* Lange sammensatte navne (Kvartalsopkrævning, Stregkodescanner) får en blød
  * bindestreg ved det sidste led, så de deles pænt på to linjer i de smalle
  * felter på våbenbjælken. Returnerer HTML (escapet). */
-const ORDLED = ['opkrævning', 'opdatering', 'arbejde', 'nedbrud', 'support', 'scanner'];
+const ORDLED = ['opkrævning', 'opdatering', 'arbejde', 'nedbrud', 'support', 'scanner',
+  'indkaldelsen', 'ordningen', 'ulykken', 'stolen', 'kanon', 'bunke', 'bakke', 'skum', 'tions'];
 export function brydOrd(tekst) {
   return String(tekst ?? '').split(' ').map((ord) => {
-    if (ord.length < 11 || ord.includes('-')) return esc(ord);     // en bindestreg deler allerede
+    if (ord.length < 9 || ord.includes('-')) return esc(ord);      // en bindestreg deler allerede
     const lav = ord.toLowerCase();
     const led = ORDLED.find((l) => lav.endsWith(l) && lav.length >= l.length + 3);
     if (!led) return esc(ord);

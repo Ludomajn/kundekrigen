@@ -1,7 +1,7 @@
 # Story 001: Make it more intense: camera, wind/gust effects, sound
 
 > **Epic**: Kundekrigen
-> **Status**: In Progress
+> **Status**: Complete
 > **Layer**: N/A (minimal — no architecture layers)
 > **Type**: Visual/Feel
 > **Estimate**: TBD (sizing not confirmed — `INTENT UNKNOWN`)
@@ -83,3 +83,13 @@
 
 - Depends on: None (brief build order only)
 - Unlocks: None
+
+---
+
+## Completion Notes
+**Completed**: 2026-10-13 — approved by the author in chat ("Story 001 er godkendt. Jeg har set dem nu")
+**Criteria**: 9 — confirmed: wind visible (images 01, 02, 07b, 10b), simulation untouched (no diff in sim/ and core/), shot zoom-out (seeded pair 09); covered by node tests only: aim, impact and kill framing, smooth transitions, reduced motion (`test/kamera_*.mjs`, 50 pass); not verified: other weathers incl. fog, host/guest wind over the network, frame rate at 1080p, sound by ear, feel by a played match.
+**Deviations**: two wind-streak defects found during the run and fixed in `render/weather.js` (back-face culling in headwind; visibility far too low at normal wind). Files outside the story's listed ones: `main.js` (wiring), `ui/haendelser.js`, `vaerktoej/kontorlyde.py`, `README.md`, `docs/kamera.md`.
+**Test Evidence**: Visual/Feel — `production/qa/evidence/story-001-more-intense-feel-evidence.md` + 17 images in `production/qa/evidence/story-001-more-intense-feel/`
+**Code Review**: Skipped (review mode solo)
+**Open**: no sound on turn-timer tick, projectile bounces, crate parachutes or rising water; "400 Sounds Pack" has no licence file (the existing `k_*` sounds come from it).

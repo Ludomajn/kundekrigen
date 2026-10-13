@@ -12,7 +12,8 @@
 import { klem } from '../core/math.js';
 import { lavProjektil, lavPlaceret, BAEVER_R, BAEVER_H, afstandTilHitbox } from './entities.js';
 import { eksploder, givSkade } from './damage.js';
-import { kapselFri } from './physics.js';
+import { kapselFri, skridtBaever, TYNGDE, MAKS_FALD, VIND_ACC } from './physics.js';
+import { DT } from '../core/tick.js';
 import { FJELD } from './terrain.js';
 import { K } from './commands.js';
 import { foersteFare, FARE_STRAALE_TOL, ramt as ramtFare, saetKilde } from './farer.js';
@@ -51,7 +52,7 @@ export function affyr(v, b, vaaben, kraft01, ekstra = {}) {
   const m = mundingsPunkt(b);
 
   switch (vaaben.arketype) {
-    case 'ballistisk': return ballistisk(v, b, vaaben, kraft01, m, h);
+    case 'ballistisk': return ballistisk(v, b, vaaben, kraft01, m, h, ekstra);
     case 'klynge': return ballistisk(v, b, vaaben, kraft01, m, h);   // samme affyring
     case 'hitscan': return hitscan(v, b, vaaben, m, h);
     case 'straale': return straale(v, b, vaaben, m, h);
@@ -65,7 +66,7 @@ export function affyr(v, b, vaaben, kraft01, ekstra = {}) {
 
 // ---------------------------------------------------------------- ballistisk
 
-function ballistisk(v, b, w, kraft01, m, h) {
+function ballistisk(v, b, w, kraft01, m, h, ekstra = {}) {
   const k = w.kraft;
   const fart = k.min + (k.max - k.min) * klem(kraft01, 0, 1);
   // En fast lunte på projektilet (COVID) går forud for den valgte (F).
@@ -82,6 +83,8 @@ function ballistisk(v, b, w, kraft01, m, h) {
     fyld: w.fyld || null,
     klynge: w.klynge || null,
     smitte: w.smitte || null,
+    // Mødeindkaldelsen: målet er markøren, som den stod ved affyringen.
+    soeg: w.projektil.soeg ? { ...w.projektil.soeg, x: ekstra.x ?? b.x, y: ekstra.y ?? b.y } : null,
     lunte,
     ejer: b.id, ejerHold: b.hold,
     sprite: w.projektil.sprite, spor: w.projektil.spor,
@@ -89,6 +92,17 @@ function ballistisk(v, b, w, kraft01, m, h) {
   v.projektiler.push(p);
   h.push({ navn: 'skudAffyret', vaaben: w.id, baever: b.id, x: m.x, y: m.y, kraft: kraft01 });
   return h;
+}
+
+/** Mødeindkaldelsen styrer mod sit mål. Kaldes fra world.js før hvert
+ *  projektilskridt; uden for søgevinduet flyver den som et skud. */
+export function styrSoeg(p) {
+  const s = p.soeg;
+  if (!s || p.alder < s.efter || p.alder >= s.efter + s.varighed) return;
+  const nu = Math.atan2(p.vy, p.vx);
+  const a = normVinkel(nu + klem(vinkelForskel(Math.atan2(s.y - p.y, s.x - p.x), nu), -s.drej, s.drej));
+  p.vx = Math.cos(a) * s.fart;
+  p.vy = Math.sin(a) * s.fart + TYNGDE * DT;      // skridtet trækker tyngden fra igen
 }
 
 /** Klyngedeling. Kaldes fra world.js når et klyngeprojektil detonerer. */
@@ -338,12 +352,13 @@ function luftangreb(v, b, w, ekstra, h) {
         // fra loftet over markøren (world.nedfaldY), ellers rammer de kun loftet.
         const yLoft = v.nedfaldY?.(x, 60, ekstra.y);
         const loft = yLoft != null && yLoft < v.terraen.h;
+        const lige = loft || la.lodret;          // Kaffeulykken hældes lodret ned over målet
         return lavProjektil(v.nytId(), {
-          x: loft ? x : x - retning * 220, y: loft ? yLoft : v.terraen.h + 60,
-          vx: loft ? 0 : retning * 120, vy: -la.fart,
+          x: lige ? x : x - retning * 220, y: loft ? yLoft : v.terraen.h + 60,
+          vx: lige ? 0 : retning * 120, vy: -la.fart,
           r: w.projektil.r, vindFaktor: w.projektil.vindFaktor,
           hop: 0, rammerBaevere: true,
-          detonation: w.detonation, ejer: b.id, ejerHold: b.hold,
+          detonation: w.detonation, ild: w.projektil.ild, ejer: b.id, ejerHold: b.hold,
           sprite: w.projektil.sprite, spor: w.projektil.spor,
         });
       },
@@ -370,6 +385,13 @@ function redskab(v, b, w, ekstra, h) {
       h.push({ navn: 'redskabStart', slags: 'bor', baever: b.id, vaaben: w.id });
       break;
     }
+    case 'turbo':
+      // Turbostolen: flyver i spillerens egen tur (skridtTurbo); world.js
+      // afslutter turen, når den lander, eller tanken er tom.
+      b.redskab = { slags: 'turbo', vaaben: w.id, tu: w.turbo, braendstof: w.turbo.braendstof,
+                    tilbage: w.turbo.tid, lettet: false, stop: false };
+      h.push({ navn: 'redskabStart', slags: 'turbo', baever: b.id, vaaben: w.id });
+      break;
     case 'skjold':
       // Hjemmearbejde: kraftfeltet holder til holdets næste tur (world.js).
       if (b.skjold) { h.afvist = true; break; }
@@ -463,6 +485,7 @@ function teleportMaal(v, x0, y0) {
 export function skridtRedskab(v, b, h) {
   const r = b.redskab;
   if (!r) return false;
+  if (r.slags === 'turbo') return skridtTurbo(v, b, r, h);
   if (r.slags !== 'bor') { b.redskab = null; b.graver = false; return false; }
 
   // Styring: de holdte piletaster giver en ønsket retning, og kursen drejer
@@ -503,7 +526,49 @@ export function skridtRedskab(v, b, h) {
 /** Stop et aktivt redskab med det samme (kunden døde, turen blev tvunget). */
 export function stopRedskab(v, b, h) {
   if (b.redskab?.slags === 'bor') slutBor(v, b, h);
+  else if (b.redskab?.slags === 'turbo') slutTurbo(b, h);
   else { b.redskab = null; b.graver = false; }
+}
+
+// ---------------------------------------------------------------- turbostolen
+
+/** Ét tick på Turbostolen. Gassen virker kun for kunden i tur; kunden flyttes
+ *  af den almindelige kundefysik (kollision, landing), så stolen aldrig går
+ *  gennem terrænet. Returnerer false, når flyvningen er slut. */
+function skridtTurbo(v, b, r, h) {
+  const tu = r.tu, t = v.terraen;
+  let mx = 0, op = 0;
+  if (b.id === v.tur.baeverId && v.accepterBevaegelse() && r.braendstof > 0) {
+    const k = v.holdt;
+    mx = ((k & K.HOEJRE) ? 1 : 0) - ((k & K.VENSTRE) ? 1 : 0);
+    op = (k & K.SIGT_OP) ? 1 : 0;
+  }
+  r.tilbage--;
+  // Landet efter letningen (uden gas opad), tom tank, stoppet eller tiden er gået.
+  if (r.stop || r.tilbage <= 0 || r.braendstof <= 0 || (r.lettet && b.paaJorden && !op)) {
+    slutTurbo(b, h);
+    return false;
+  }
+  if (mx) b.retning = mx;
+  if (!op && b.paaJorden) return true;            // står stadig: venter på gas
+  if (mx || op) r.braendstof--;
+  b.paaJorden = false;
+  b.vx = klem(b.vx + (mx * tu.vandret + v.vindNu() * tu.vindFaktor * VIND_ACC) * DT, -tu.maksFart, tu.maksFart);
+  b.vy = klem(b.vy + op * tu.op * DT, -MAKS_FALD, tu.maksFart);
+  b.faldFra = b.y;                                 // ingen faldskade, mens motoren bærer
+  skridtBaever(t, b, 0);
+  b.x = klem(b.x, BAEVER_R + 2, t.w - BAEVER_R - 2);
+  b.y = Math.min(b.y, t.h - 2 * BAEVER_R - BAEVER_H - 4);
+  if (!b.paaJorden) r.lettet = true;
+  return true;
+}
+
+/** Turbostolen er slut: kunden falder herfra med almindelig faldskade. */
+function slutTurbo(b, h) {
+  const r = b.redskab;
+  b.redskab = null;
+  if (!b.paaJorden) b.faldFra = b.y;
+  h.push({ navn: 'redskabSlut', slags: 'turbo', baever: b.id, vaaben: r.vaaben });
 }
 
 /** Må boret tage næste skridt? Aldrig ud af banen, aldrig ned mod havet,

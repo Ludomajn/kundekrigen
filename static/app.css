@@ -281,40 +281,51 @@ input[type=text]:focus{border-color:var(--kk-yellow);outline:none;box-shadow:0 0
 .vmeta{display:flex;gap:14px;justify-content:center;font-size:11.5px;color:var(--kk-ice);margin-top:2px}
 .kraftbar{width:280px;height:10px;border-radius:999px;background:rgba(255,255,255,.22);overflow:hidden}
 .kraftbar i{display:block;height:100%;background:linear-gradient(90deg,var(--kk-yellow),var(--hold-roed))}
-/* Våbenbjælken: altid ti faste pladser (1–0), så tallene står stille, også
-   når en plads er tom. Tast øverst til venstre, ammo øverst til højre,
-   navnet på højst to linjer nederst. */
-.favoritbar{display:flex;gap:4px;flex-wrap:wrap;justify-content:center}
+/* Våbenbjælken: ti faste pladser (1–0) som runde ikoner. Cirklens farve siger,
+   hvad det er (rød: våben, blå: skjold og dækning, lilla: redskaber), og den er
+   mørkest inderst, så den lyse tegning står frem. Tasten står under ikonet;
+   navnet popper op over det, når våbnet vælges (og ved mus over). */
+.favoritbar{display:flex;gap:8px;flex-wrap:wrap;justify-content:center}
+.fav,.vp-celle{--fm:#2B0B0A;--fk:#8E2318;--fc:#E8533B}    /* cirklen: inderst, midt, kant */
 .fav{
-  pointer-events:auto;position:relative;display:flex;flex-direction:column;align-items:center;
-  justify-content:flex-start;gap:2px;width:80px;height:76px;padding:6px 4px 4px;
-  border:1px solid rgba(207,232,240,.22);background:rgba(13,49,69,.64);color:var(--kk-ice);
-  border-radius:var(--r-md);cursor:pointer;font-family:var(--font);
-  transition:border-color .12s,background-color .12s;
+  pointer-events:auto;position:relative;display:flex;flex-direction:column;align-items:center;gap:4px;
+  width:58px;padding:0;border:0;background:none;color:var(--kk-ice);cursor:pointer;font-family:var(--font);
 }
-.fav:hover{border-color:rgba(207,232,240,.6);background:rgba(16,84,107,.72)}
-.fav .favtast{position:absolute;top:4px;left:6px;font:800 10.5px/1 var(--font);color:var(--kk-yellow)}
+.farve-blaa{--fm:#08182B;--fk:#1D4F8E;--fc:#3D95EE}
+.farve-lilla{--fm:#170A2B;--fk:#5A2D96;--fc:#A66BEE}
+.favcirkel{
+  position:relative;display:grid;place-items:center;width:54px;height:54px;border-radius:50%;
+  background:radial-gradient(circle,var(--fm) 0%,var(--fm) 28%,var(--fk) 66%,var(--fc) 100%);
+  border:2.5px solid #0B1116;box-shadow:0 3px 9px rgba(4,20,30,.55),inset 0 0 0 1px rgba(255,255,255,.14);
+  transition:transform .15s cubic-bezier(.2,1.6,.4,1),box-shadow .15s;
+}
+.fav:not(.tom):hover .favcirkel{transform:scale(1.06)}
+.fav .favtast{font:800 11px/1 var(--font);color:var(--kk-yellow);text-shadow:0 1px 2px rgba(0,0,0,.8)}
 .fav .favammo{
-  position:absolute;top:3px;right:3px;min-width:16px;padding:2px 4px;border-radius:999px;
-  font:700 9.5px/1 var(--font);text-align:center;color:var(--white);background:rgba(255,255,255,.16);
+  position:absolute;top:-3px;right:-5px;min-width:17px;padding:2px 4px;border-radius:999px;
+  font:700 9.5px/1 var(--font);text-align:center;color:var(--white);background:#0B1116;
+  border:1px solid rgba(207,232,240,.3);
 }
 .fav .favnavn{
-  width:100%;flex:0 0 auto;font:600 9.5px/1.15 var(--font);text-align:center;overflow-wrap:anywhere;hyphens:manual;
-  display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;line-clamp:2;overflow:hidden;
+  position:absolute;bottom:calc(100% + 6px);left:50%;translate:-50% 0;white-space:nowrap;pointer-events:none;
+  padding:4px 9px;border-radius:999px;background:rgba(11,17,22,.92);border:1px solid rgba(255,216,111,.55);
+  font:700 11px/1 var(--font);color:var(--kk-yellow);opacity:0;
 }
-.fav.valgt{background:var(--kk-yellow);color:var(--kk-deep);border-color:var(--kk-yellow);
-  box-shadow:0 0 0 2px rgba(255,216,111,.35),0 6px 16px -6px rgba(255,216,111,.7)}
-.fav.valgt .favtast{color:var(--kk-deep)}
-.fav.valgt .favammo{background:rgba(13,49,69,.2);color:var(--kk-deep)}
-.fav.tom{opacity:.5;cursor:not-allowed}
-.fav.tom .favammo{background:rgba(255,255,255,.08);color:rgba(207,232,240,.7)}
-.fav.tom:hover{border-color:rgba(207,232,240,.22);background:rgba(13,49,69,.64)}
-/* Tom plads: kun tallet og en stiplet ramme. */
-.fav.fav-plads{cursor:default;background:rgba(13,49,69,.28);border-style:dashed;border-color:rgba(207,232,240,.2)}
-.fav.fav-plads:hover{background:rgba(13,49,69,.28);border-color:rgba(207,232,240,.2)}
+.fav.valgt .favnavn{animation:navnPop 1.8s ease-out forwards}
+.fav:not(.tom):hover .favnavn{animation:none;opacity:1}
+@keyframes navnPop{0%{opacity:0;transform:translateY(6px) scale(.85)}12%{opacity:1;transform:translateY(0) scale(1.08)}
+  20%{transform:scale(1)}78%{opacity:1}100%{opacity:0}}
+.fav.valgt .favcirkel{transform:scale(1.12);border-color:var(--kk-yellow);
+  box-shadow:0 0 0 2px rgba(255,216,111,.35),0 6px 16px -4px rgba(255,216,111,.75)}
+.fav.valgt .favtast{color:var(--white)}
+.fav.tom{cursor:not-allowed}
+.fav.tom .favcirkel{filter:grayscale(1) brightness(.7)}
+.fav.tom .favammo{color:rgba(207,232,240,.7)}
+/* Tom plads: en stiplet cirkel og tallet. */
+.fav.fav-plads{cursor:default}
+.fav.fav-plads .favcirkel{background:rgba(13,49,69,.3);border:1.5px dashed rgba(207,232,240,.25);box-shadow:none}
 .fav.fav-plads .favtast{color:rgba(255,216,111,.55)}
-.fav.fav-plads .favnavn{color:rgba(207,232,240,.45);font-weight:500}
-.favplads-ikon{width:30px;height:30px;margin-top:2px;border-radius:7px;border:1.5px dashed rgba(207,232,240,.22)}
+@media (prefers-reduced-motion:reduce){.fav.valgt .favnavn{animation:none;opacity:1}}
 .fav.nej{animation:rystNej .32s ease-in-out}
 @keyframes rystNej{0%,100%{translate:0}20%{translate:-4px}40%{translate:4px}60%{translate:-3px}80%{translate:2px}}
 .hud-bund.tilskuer .favoritbar{display:none}
@@ -519,23 +530,20 @@ kbd{
 }
 
 /* ---------------------------------------------------------- våbenikoner */
-.favikon{width:30px;height:30px;color:var(--kk-ice);display:block;flex:0 0 auto;margin-top:2px}
-.fav.valgt .favikon{color:var(--kk-deep)}
+.favikon{width:30px;height:30px;color:var(--kk-ice);display:block;flex:0 0 auto}
 .vikon{width:19px;height:19px;vertical-align:-3px;margin-right:7px;color:var(--kk-yellow)}
 .vnavn{display:inline-flex;align-items:center}
-.vp-ikon{width:44px;height:44px;color:var(--kk-ice)}
-.vp-celle.paa .vp-ikon{color:var(--kk-deep)}
+.vp-ikon{width:26px;height:26px;color:var(--kk-ice)}
 
 /* Brikkerne: spillets egne våbentegninger på en farvet flise. */
 img.vbrik{display:block;image-rendering:auto;user-select:none;
   transition:transform .15s cubic-bezier(.2,1.6,.4,1),filter .15s}
-img.favikon.vbrik{width:32px;height:32px;margin-top:1px}
+img.favikon.vbrik{width:40px;height:40px;filter:brightness(1.12)}
 img.vikon.vbrik{width:30px;height:30px;margin-right:8px}
-img.vp-ikon.vbrik{width:46px;height:46px}
-.fav.valgt img.vbrik{transform:scale(1.14) rotate(-4deg);filter:drop-shadow(0 0 6px rgba(255,216,111,.9))}
-.vp-celle.paa img.vbrik{transform:scale(1.1) rotate(-4deg)}
-.fav:not(.tom):hover img.vbrik{transform:scale(1.08)}
-.fav.tom img.vbrik,.vp-celle.tom img.vbrik{filter:grayscale(1) brightness(.8)}
+img.vp-ikon.vbrik{width:32px;height:32px;filter:brightness(1.12)}
+.fav.valgt img.vbrik{transform:rotate(-6deg);filter:brightness(1.2) drop-shadow(0 0 4px rgba(255,216,111,.7))}
+.vp-celle.paa img.vbrik{transform:rotate(-6deg)}
+.vp-celle.tom img.vbrik{filter:grayscale(1) brightness(.8)}
 
 /* ---------------------------------------------------------- dybdevignet
    En let mørkning mod kanterne og en kølig tone i hjørnerne. Det er et
@@ -798,7 +806,7 @@ img.vp-ikon.vbrik{width:46px;height:46px}
 :root{
   --skuffe-top:calc(72px * var(--ui));
   --skuffe-bund:calc(var(--bund-h, 188px) * var(--ui) + 10px);
-  --skuffe-b:min(440px, calc((100vw - 64px) / var(--ui)));   /* uskaleret bredde */
+  --skuffe-b:min(392px, calc((100vw - 64px) / var(--ui)));   /* uskaleret bredde */
 }
 .vaabenpanel{
   position:fixed;left:0;top:var(--skuffe-top);z-index:35;width:var(--skuffe-b);
@@ -846,47 +854,55 @@ img.vp-ikon.vbrik{width:46px;height:46px}
   font:800 9.5px/1 var(--font);letter-spacing:.14em;text-transform:uppercase;color:var(--kk-ice);opacity:.85;
 }
 .vp-gruppe h3::after{content:"";flex:1;height:1px;background:rgba(207,232,240,.16)}
-.vp-gitter{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px}
+/* Hele arsenalet i ét gitter uden rul: seks cirkler pr. række, navnet under.
+   Musen over en cirkel (eller markøren) folder detaljekortet ud ved siden af. */
+.vp-gitter{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:4px 2px}
 .vp-celle{
-  position:relative;display:grid;grid-template-columns:46px minmax(0,1fr);grid-template-rows:auto auto 1fr auto;
-  column-gap:9px;row-gap:3px;align-items:start;min-height:104px;padding:8px 9px;text-align:left;
-  border:1px solid rgba(207,232,240,.2);background:rgba(255,255,255,.05);color:var(--white);
-  border-radius:var(--r-md);cursor:pointer;font-family:var(--font);
+  position:relative;display:flex;flex-direction:column;align-items:center;gap:3px;padding:5px 2px 4px;
+  border:1px solid transparent;background:none;color:var(--white);border-radius:var(--r-md);
+  cursor:pointer;font-family:var(--font);
 }
-.vp-celle > .vp-ikon{grid-column:1;grid-row:1 / span 2}
-.vp-navn{
-  grid-column:2;grid-row:1;padding-right:22px;font:700 12px/1.2 var(--font);overflow-wrap:anywhere;
-  display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;line-clamp:2;overflow:hidden;
+.vp-celle .favcirkel{width:46px;height:46px;border-width:2px}
+.vp-celle .vp-ammo{
+  position:absolute;top:-4px;right:-6px;min-width:16px;padding:2px 4px;border-radius:999px;
+  font:700 9px/1 var(--font);text-align:center;color:var(--white);background:#0B1116;border:1px solid rgba(207,232,240,.3);
 }
-.vp-info{grid-column:2;grid-row:2;display:flex;align-items:center;gap:6px;flex-wrap:wrap}
-.vp-ammo{font:700 10.5px/1 var(--font);padding:2.5px 6px;border-radius:999px;background:rgba(255,255,255,.14)}
-.vp-haand{display:none;font:800 8.5px/1 var(--font);letter-spacing:.1em;text-transform:uppercase;color:var(--kk-yellow)}
-.vp-celle.valgt .vp-haand{display:inline}
-.vp-hjaelp{
-  grid-column:1 / -1;grid-row:3;margin-top:3px;font-size:9.5px;line-height:1.38;opacity:.78;
-  display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:4;line-clamp:4;overflow:hidden;
-}
-.vp-laas{grid-column:1 / -1;grid-row:4;font:700 9.5px/1.2 var(--font);color:var(--kk-yellow)}
-.vp-laas:empty{display:none}
 /* Bjælketasten: den plads, våbnet ligger på. */
 .vp-tast{
-  position:absolute;top:6px;right:6px;min-width:18px;height:18px;padding:0 4px;border-radius:5px;
-  display:grid;place-items:center;font:800 10.5px/1 var(--font);color:var(--kk-deep);background:var(--kk-yellow);
+  position:absolute;bottom:-4px;left:-5px;min-width:15px;height:15px;padding:0 3px;border-radius:4px;
+  display:grid;place-items:center;font:800 9px/1 var(--font);color:var(--kk-deep);background:var(--kk-yellow);
 }
 .vp-tast:empty{display:none}
-.vp-celle:hover{border-color:rgba(207,232,240,.5);background:rgba(255,255,255,.09)}
-.vp-celle.valgt{border-color:rgba(255,216,111,.75);box-shadow:inset 3px 0 0 var(--kk-yellow)}
-.vp-celle.paa{background:var(--kk-yellow);color:var(--kk-deep);border-color:var(--kk-yellow);
-  box-shadow:0 0 0 2px rgba(255,216,111,.35)}
-.vp-celle.paa .vp-ammo{background:rgba(13,49,69,.18)}
-.vp-celle.paa .vp-haand{color:var(--kk-deep)}
-.vp-celle.paa .vp-tast{background:var(--kk-deep);color:var(--kk-yellow)}
-.vp-celle.paa .vp-laas{color:#8A3A12}
+.vp-navn{
+  width:100%;font:600 8.8px/1.12 var(--font);letter-spacing:-.2px;text-align:center;hyphens:manual;
+  display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:3;line-clamp:3;overflow:hidden;
+}
+.vp-celle:hover{background:rgba(255,255,255,.07)}
+.vp-celle:hover .favcirkel{transform:scale(1.08)}
+.vp-celle.valgt .favcirkel{border-color:var(--kk-yellow);box-shadow:0 0 0 2px rgba(255,216,111,.35)}
+.vp-celle.paa{background:rgba(255,216,111,.12);border-color:rgba(255,216,111,.7)}
+.vp-celle.paa .vp-navn{color:var(--kk-yellow)}
 .vp-celle.tom{cursor:not-allowed}
-.vp-celle.tom > :not(.vp-laas):not(.vp-tast){opacity:.5}
-.vp-celle.tom.paa > :not(.vp-laas):not(.vp-tast){opacity:.72}
+.vp-celle.tom .favcirkel{filter:grayscale(1) brightness(.7)}
+.vp-celle.tom .vp-navn{opacity:.6}
 .vp-celle.nej{animation:rystNej .32s ease-in-out}
 .vp-celle.bundet .vp-tast{animation:bundetPuls .6s cubic-bezier(.2,1.6,.4,1)}
+/* Detaljekortet: folder sig ud til højre for skuffen ud for cellen. */
+.vp-detalje{
+  position:absolute;left:calc(100% + 10px);width:230px;padding:10px 12px;border-radius:var(--r-lg);
+  background:rgba(11,17,22,.94);border:1px solid rgba(255,216,111,.5);color:var(--white);
+  box-shadow:0 10px 26px -10px rgba(4,20,30,.9);pointer-events:none;
+  opacity:0;transform:translateX(-8px) scaleX(.96);transform-origin:left center;transition:opacity .14s,transform .14s,top .1s;
+}
+.vp-detalje.vis{opacity:1;transform:none}
+.vpd-top{display:flex;align-items:center;gap:6px}
+.vpd-top b{flex:1;font:800 13px/1.2 var(--font);color:var(--kk-yellow)}
+.vpd-ammo{font:700 10px/1 var(--font);padding:2.5px 6px;border-radius:999px;background:rgba(255,255,255,.14)}
+.vpd-tast{min-width:16px;height:16px;padding:0 4px;border-radius:4px;display:grid;place-items:center;
+  font:800 10px/1 var(--font);color:var(--kk-deep);background:var(--kk-yellow)}
+.vp-detalje p{margin:6px 0 0;font-size:10.5px;line-height:1.4;opacity:.88}
+.vpd-laas{margin-top:5px;font:700 10px/1.2 var(--font);color:var(--kk-yellow)}
+@media (prefers-reduced-motion:reduce){.vp-detalje{transition:none}}
 @keyframes bundetPuls{0%{transform:scale(.3)}60%{transform:scale(1.35)}100%{transform:none}}
 .vp-status{
   flex:0 0 auto;max-height:0;overflow:hidden;padding:0 16px;font:700 11px/1.3 var(--font);
@@ -974,18 +990,18 @@ img.vp-ikon.vbrik{width:46px;height:46px}
 @media (prefers-reduced-motion:reduce){.fare-pil.varsel .fp-rund,.fare-skilt{animation:none}}
 
 @media (max-width:980px){
-  .fav{width:68px;height:70px}
-  img.favikon.vbrik{width:26px;height:26px}
-  .fav .favnavn{font-size:8.5px}
+  .fav{width:50px}
+  .favcirkel{width:46px;height:46px}
+  img.favikon.vbrik{width:34px;height:34px}
 }
 /* Smalle vinduer: ti små pladser på én række — kun tal, ikon og ammo. */
 @media (max-width:760px){
   .favoritbar{flex-wrap:nowrap;gap:3px}
-  .fav{width:40px;height:46px;padding:4px 2px 2px}
-  .fav .favnavn{display:none}
-  .fav .favtast{top:2px;left:3px;font-size:9px}
-  .fav .favammo{top:1px;right:1px;font-size:8px;padding:1px 3px;min-width:0}
-  img.favikon.vbrik{width:22px;height:22px;margin-top:8px}
+  .fav{width:36px;gap:2px}
+  .favcirkel{width:34px;height:34px;border-width:2px}
+  .fav .favtast{font-size:9px}
+  .fav .favammo{top:-4px;right:-4px;font-size:8px;padding:1px 3px;min-width:0}
+  img.favikon.vbrik{width:26px;height:26px}
 }
 @media (max-height:640px){
   :root{--skuffe-top:calc(56px * var(--ui))}

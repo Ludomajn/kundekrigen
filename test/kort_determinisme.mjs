@@ -11,7 +11,7 @@
  */
 import { genererSpilbar, BANE_TYPER } from '../static/js/sim/terrain_gen.js';
 import { lavVerden } from '../static/js/sim/world.js';
-import { tjek, overskrift, testFroe, lavHold, maskeHash } from './kort_hjaelp.mjs';
+import { tjek, overskrift, testFroe, lavHold, maskeHash, froeMed, NYE_ARKETYPER } from './kort_hjaelp.mjs';
 
 const ens = (a, b) => a.length === b.length && a.every((v, i) => v === b[i]);
 const LAYOUT = { antalHold: 2, prHold: 2 };
@@ -30,6 +30,17 @@ for (const type of BANE_TYPER) {
   tjek(`${type}: masken er ens for samme frø (6 frø)`, alle);
   tjek(`${type}: pynten er ens`, pyntEns);
   if (type === 'fort') tjek('fort: fortplanen (pladser, udstyr, rum) er ens', fortEns);
+}
+
+// De nye arketyper (story 003), tvunget: samme frø, samme maske og pynt.
+for (const [type, ark] of NYE_ARKETYPER) {
+  let alle = true;
+  for (const froe of froeMed(type, ark, 6, 2000)) {
+    const a = genererSpilbar(froe, type, 4, type === 'fort' ? LAYOUT : null);
+    const b = genererSpilbar(froe, type, 4, type === 'fort' ? LAYOUT : null);
+    if (!ens(a.terraen.maske, b.terraen.maske) || JSON.stringify(a.terraen.pynt) !== JSON.stringify(b.terraen.pynt)) alle = false;
+  }
+  tjek(`${type}/${ark}: masken og pynten er ens for samme frø (6 frø)`, alle);
 }
 
 overskrift('Værtens og gæstens vej giver den samme bane');

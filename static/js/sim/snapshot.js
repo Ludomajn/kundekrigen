@@ -15,7 +15,7 @@ export const SNAPSHOT_V = 1;
 
 /* Flagene i delta-rækken for en kunde (e[6]). Spejlet pakker dem ud i
  * anvendDelta; figur_view og HUD'en læser felterne derfra. */
-export const FLAG = { DOED: 1, PAA_JORDEN: 2, SKJOLD: 4, SPRING_OVER: 8, GRAVER: 16, SMITTET: 32 };
+export const FLAG = { DOED: 1, PAA_JORDEN: 2, SKJOLD: 4, SPRING_OVER: 8, GRAVER: 16, SMITTET: 32, TURBO: 64 };
 
 export function tagSnapshot(v) {
   return {
@@ -40,12 +40,13 @@ export function tagSnapshot(v) {
       hp: b.hp, doed: b.doed, drukner: b.drukner,
       retning: b.retning, vinkel: r3(b.vinkel), paaJorden: b.paaJorden,
       skjold: !!b.skjold, springOver: b.springOver | 0, graver: !!b.redskab, smittet: b.smittet | 0,
+      turbo: b.redskab?.slags === 'turbo',
       ildTur: b.ildTur | 0,
     })),
     projektiler: v.projektiler.map((p) => ({
       id: p.id, x: r1(p.x), y: r1(p.y), vx: r1(p.vx), vy: r1(p.vy), r: p.r,
       vindFaktor: p.vindFaktor, hop: p.hop, rammerBaevere: p.rammerBaevere,
-      detonation: p.detonation, fyld: p.fyld, klynge: p.klynge, smitte: p.smitte, lunte: p.lunte,
+      detonation: p.detonation, fyld: p.fyld, klynge: p.klynge, smitte: p.smitte, ild: p.ild, soeg: p.soeg, lunte: p.lunte,
       ejer: p.ejer, ejerHold: p.ejerHold, sprite: p.sprite, spor: p.spor, sover: p.sover,
       hvilerPaa: p.hvilerPaa ?? null, kaedeId: p.kaedeId ?? null,
     })),
@@ -84,7 +85,8 @@ export function tagDelta(v) {
   for (const b of v.baevere) {
     const flag = (b.doed ? FLAG.DOED : 0) | (b.paaJorden ? FLAG.PAA_JORDEN : 0) |
                  (b.skjold ? FLAG.SKJOLD : 0) | (b.springOver ? FLAG.SPRING_OVER : 0) |
-                 (b.redskab ? FLAG.GRAVER : 0) | (b.smittet > 0 ? FLAG.SMITTET : 0);
+                 (b.redskab ? FLAG.GRAVER : 0) | (b.smittet > 0 ? FLAG.SMITTET : 0) |
+                 (b.redskab?.slags === 'turbo' ? FLAG.TURBO : 0);
     e.push([b.id, Math.round(b.x * 8) / 8, Math.round(b.y * 8) / 8,
             Math.round(b.vx * 4) / 4, Math.round(b.vy * 4) / 4, b.hp,
             flag, Math.round(b.vinkel * 256) / 256, b.retning]);
@@ -144,7 +146,8 @@ export function anvendDelta(v, d) {
     b.paaJorden = !!(f & FLAG.PAA_JORDEN);
     b.skjold = !!(f & FLAG.SKJOLD);
     b.springOver = (f & FLAG.SPRING_OVER) ? 1 : 0;
-    b.graver = !!(f & FLAG.GRAVER);
+    b.graver = !!(f & FLAG.GRAVER);           // ethvert redskab: intet sigte, mellemrum stopper
+    b.turbo = !!(f & FLAG.TURBO);             // Turbostolen: kunden sidder på stolen
     // Spejlet kender kun "smittet eller ej" mellem snapshots; et kendt antal
     // ture (fra snapshot eller 'smittet'-hændelsen) bevares.
     if (!(f & FLAG.SMITTET)) b.smittet = 0;

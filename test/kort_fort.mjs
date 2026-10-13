@@ -20,19 +20,21 @@
 import { genererSpilbar, fortHopSikker, VAND_NIVEAU } from '../static/js/sim/terrain_gen.js';
 import { kapselFri } from '../static/js/sim/physics.js';
 import { lavVerden } from '../static/js/sim/world.js';
-import { tjek, overskrift, testFroe, lavHold } from './kort_hjaelp.mjs';
+import { tjek, overskrift, testFroe, lavHold, froeMed, NYE_ARKETYPER } from './kort_hjaelp.mjs';
 
 const OPSTILLINGER = [[2, 1], [2, 2], [2, 3], [2, 4], [3, 2], [4, 2], [5, 2], [6, 1]];
 
-for (const [H, pr] of OPSTILLINGER) {
-  const N = H === 2 && pr === 2 ? 50 : 12;
-  overskrift(`Fortet ${H} klinikker x ${pr} kunder (${N} frø)`);
+/** Alle kontrollerne på fortet med H klinikker x pr kunder over froer. Med
+ *  tvunget (et nyt landskab, frøene trækker det) skal det også bruges med 2 x 2. */
+function tjekFort(H, pr, froer, tvunget = null) {
+  overskrift(`Fortet ${H} klinikker x ${pr} kunder${tvunget ? `, landskabet ${tvunget}` : ''} (${froer.length} frø)`);
   const fejl = { passer: [], spejl: [], pladser: [], antal: [], udstyr: [], kasser: [], spand: [], hop: [], skud: [], rum: [], staa: [] };
-  const landskaber = {}, reserve = [];
-  for (let i = 0; i < N; i++) {
-    const froe = testFroe(500 + i * 13 + H * 7 + pr);
+  const landskaber = {}, reserve = [], andet = [];
+  for (let i = 0; i < froer.length; i++) {
+    const froe = froer[i];
     const t = genererSpilbar(froe, 'fort', H * pr, { antalHold: H, prHold: pr }).terraen;
     const f = t.fort, W = t.w;
+    if (tvunget && f.landskab.navn !== tvunget) andet.push(`${i}:${f.landskab.navn}`);
     landskaber[`${f.siluet}/${f.landskab.navn}`] = (landskaber[`${f.siluet}/${f.landskab.navn}`] || 0) + 1;
     if (f.reserve) reserve.push(`${i}:${f.reserve}`);
     if (!f.passer) fejl.passer.push(i);
@@ -106,6 +108,14 @@ for (const [H, pr] of OPSTILLINGER) {
   tjek('kunderne starter i deres egne rum', !fejl.rum.length, vis(fejl.rum));
   tjek('kunderne starter over vandet med fri kapsel', !fejl.staa.length, vis(fejl.staa));
   tjek('ingen reservebaner (landskabet holdt hver gang)', !reserve.length, `${Object.keys(landskaber).length} kombinationer${reserve.length ? `; reserve: ${vis(reserve)}` : ''}`);
+  if (tvunget && H === 2 && pr === 2) tjek(`${tvunget}: landskabet bruges hver gang med 2 x 2`, !andet.length, vis(andet));
+}
+
+for (const [H, pr] of OPSTILLINGER) tjekFort(H, pr, Array.from({ length: H === 2 && pr === 2 ? 50 : 12 }, (_, i) => testFroe(500 + i * 13 + H * 7 + pr)));
+// De nye landskaber (story 003), tvunget i alle opstillinger.
+for (const [type, ark] of NYE_ARKETYPER) {
+  if (type !== 'fort') continue;
+  for (const [H, pr] of OPSTILLINGER) tjekFort(H, pr, froeMed('fort', ark, H === 2 && pr === 2 ? 30 : 8, 4000 + H * 100 + pr), ark);
 }
 
 overskrift('Kampstart på fortet: samme udstyr på hver borg, spejlet');

@@ -55,6 +55,19 @@ export const VAABEN = {
     kasse: { vaegt: 1, antal: 1 }, retreatTicks: 180, afslutterTur: true,
     hjaelp: 'En kort stråle. Rammer den en modstander, skal vedkommende installere opdateringer og springer sin næste tur over.',
   },
+  // Målsøgende missil (Worms): vælg et mål med markøren (maal), sigt og skyd.
+  // Indkaldelsen flyver som et skud i soeg.efter tick og styrer så i
+  // soeg.varighed tick mod målet med fast fart og højst soeg.drej rad/tick.
+  moedeindkaldelse: {
+    id: 'moedeindkaldelse', navn: 'Mødeindkaldelsen', kategori: 'skyts', ikon: 'v-grenroer',
+    arketype: 'ballistisk', sigte: 'vinkel+kraft', maal: true, ammo: 1,
+    kraft: { min: 240, max: 1200, opladTid: 90 },
+    projektil: { r: 4, vindFaktor: 0.6, hop: 0, rammerBaevere: true, sprite: 'kalender', spor: null,
+                 soeg: { efter: 36, varighed: 200, fart: 560, drej: 0.08 } },
+    detonation: { radius: 52, skade: 45, knockback: 240, carve: true },
+    kasse: { vaegt: 2, antal: 1 }, retreatTicks: 180, afslutterTur: true,
+    hjaelp: 'Vælg et mål med markøren, sigt og skyd: invitationen flyver et øjeblik som et skud og søger så mod mødet. Ingen kan sige nej.',
+  },
   egegranat: {
     id: 'egegranat', navn: 'Datalæk-bomben', kategori: 'kast', ikon: 'v-egegranat',
     arketype: 'ballistisk', sigte: 'vinkel+kraft', ammo: 3,
@@ -77,6 +90,21 @@ export const VAABEN = {
       detonation: { radius: 34, skade: 22, knockback: 130, carve: true }, lunte: 1.2 } },
     kasse: { vaegt: 2, antal: 1 }, retreatTicks: 180, afslutterTur: true,
     hjaelp: 'Ingen af integrationerne virker sammen: den springer i fem brændende stumper ved detonation.',
+  },
+  // Bananbomben (Worms): frugtkurven springer i fem bananer, der hopper og
+  // går af hver for sig. Tungere end infernoet — derfor kun fra kasser.
+  frugtordning: {
+    id: 'frugtordning', navn: 'Frugtordningen', kategori: 'kast', ikon: 'v-koglebombe',
+    arketype: 'klynge', sigte: 'vinkel+kraft', ammo: 0,
+    kraft: { min: 200, max: 1050, opladTid: 75 },
+    lunte: { valg: [1, 2, 3, 4, 5], start: 3 },
+    projektil: { r: 8, vindFaktor: 0, hop: 0.4, rammerBaevere: false, sprite: 'frugtkurv', spor: null },
+    detonation: { radius: 48, skade: 30, knockback: 200, carve: true },
+    klynge: { antal: 5, spredning: 1.5, fart: 330, barn: {
+      r: 4, vindFaktor: 0, hop: 0.5, rammerBaevere: false, sprite: 'banan',
+      detonation: { radius: 44, skade: 32, knockback: 200, carve: true }, lunte: 1.6 } },
+    kasse: { vaegt: 1, antal: 1 }, retreatTicks: 180, afslutterTur: true,
+    hjaelp: 'Kontorets frugtkurv. Sæt lunten med F; den springer i fem bananer, der hopper rundt og går af. Findes kun i forsyningskasser.',
   },
   halesmaek: {
     id: 'halesmaek', navn: 'Klageklask', kategori: 'naerkamp', ikon: 'v-hale',
@@ -109,6 +137,17 @@ export const VAABEN = {
     bor: { r: 17, fart: 0.9, tid: 540, styrbar: true, drej: 0.05 },
     kasse: { vaegt: 1, antal: 1 }, retreatTicks: 150, afslutterTur: false,
     hjaelp: 'Bor dig ned i jorden. Styr med piletasterne, stop med mellemrum. Boret standser selv før vandet.',
+  },
+  // Jetpack (Worms): kunden rider på en kontorstol med raketmotor. Op giver
+  // gas opad, venstre/højre til siden; braendstof er tick med gas. Turen
+  // slutter ved landing, tom tank, mellemrum eller efter tid tick.
+  // op/vandret i wu/s² (tyngden er 480), maksFart i wu/s.
+  turbostol: {
+    id: 'turbostol', navn: 'Turbostolen', kategori: 'udstyr', ikon: 'v-nedgravning',
+    arketype: 'redskab', redskab: 'turbo', sigte: 'ingen', ammo: 1,
+    turbo: { braendstof: 300, op: 900, vandret: 420, maksFart: 300, vindFaktor: 0.3, tid: 900 },
+    kasse: { vaegt: 2, antal: 1 }, retreatTicks: 150, afslutterTur: false,
+    hjaelp: 'Ræs af sted på en kontorstol med raketmotor: pil op giver gas, venstre og højre styrer. Turen slutter, når du lander, eller tanken er tom.',
   },
   gangtunnel: {
     id: 'gangtunnel', navn: 'Fjernsupport', kategori: 'udstyr', ikon: 'v-teleport',
@@ -149,6 +188,19 @@ export const VAABEN = {
     detonation: { radius: 40, skade: 24, knockback: 170, carve: true },
     kasse: { vaegt: 1, antal: 1 }, retreatTicks: 180, afslutterTur: true,
     hjaelp: 'Otte fakturaer daler ned over målet. Vælg mål, og hvilken vej de kommer. Findes kun i forsyningskasser.',
+  },
+  // Napalm (Worms): Kvartalsopkrævningens mål og nedfald, men hver dråbe
+  // tænder en ildplet i den FÆLLES ild (sim/farer.js, taendIld). ild.celler
+  // er pletter pr. dråbe (ILD_CELLE fra hinanden).
+  kaffeulykke: {
+    id: 'kaffeulykke', navn: 'Kaffeulykken', kategori: 'special', ikon: 'v-airstrike',
+    arketype: 'luftangreb', sigte: 'markoer', ammo: 0,
+    luftangreb: { antal: 6, mellemrum: 4, spredning: 24, jitter: 6, fart: 220, lodret: true },
+    projektil: { r: 4, vindFaktor: 0.5, hop: 0, rammerBaevere: true, sprite: 'kaffe', spor: null,
+                 ild: { celler: 1 } },
+    detonation: { radius: 18, skade: 8, knockback: 60, carve: true },
+    kasse: { vaegt: 1, antal: 1 }, retreatTicks: 180, afslutterTur: true,
+    hjaelp: 'Nogen væltede kaffekanden: skoldhed kaffe hældes ud over målet og sætter jorden i brand. Vælg mål — kaffen falder lodret ned. Findes kun i forsyningskasser.',
   },
   covid: {
     id: 'covid', navn: 'COVID', kategori: 'special', ikon: 'v-covid',

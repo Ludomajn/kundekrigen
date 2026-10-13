@@ -7,6 +7,12 @@ import { lavVerden, T, K, VAABEN } from '../static/js/sim/world.js';
 import * as FA from '../static/js/sim/farer.js';
 import { lavHold } from './kort_hjaelp.mjs';
 import { mundingsPunkt } from '../static/js/sim/behaviours.js';
+import { SKEMAER } from '../static/js/sim/baneregler.js';
+
+// Farertestene er skrevet mod banerne fra før story 003: de nye arketyper
+// (SKEMAER.*.nye) slås fra, så de faste frø giver præcis de baner, testene
+// blev skrevet til. De nye arketyper prøves i kort_*.mjs.
+for (const S of Object.values(SKEMAER)) delete S.nye;
 
 export { T, K, VAABEN, FA, lavHold };
 

@@ -23,7 +23,8 @@ KODE_LAENGDE = 5
 
 MAKS_RUM = 20
 MAKS_DELTAGERE = 12
-MAKS_BAEVERE = 12                       # spillere i kampen: én fighter hver
+MAKS_BAEVERE = 12                       # kunder i kampen (hold fyldes op til KUNDER_PR_HOLD)
+KUNDER_PR_HOLD = 3                      # kunder pr. hold som udgangspunkt; spejlet i net/transport.js
 MAKS_FORBINDELSER = 200
 
 RYD_TICK = 5.0
@@ -187,7 +188,8 @@ class Rum:
                 if not d.tilskuer and d.hold is not None and (hid is None or d.hold == hid)]
 
     def antal_baevere(self):
-        return len(self.spillere())
+        """Kunder i kampen: hvert hold med spillere fyldes op til KUNDER_PR_HOLD."""
+        return sum(max(KUNDER_PR_HOLD, len(s)) for s in (self.spillere(h) for h in range(ANTAL_HOLD)) if s)
 
     def lobby(self, til_pid=None):
         n = self.nedtaelling
@@ -266,18 +268,24 @@ def _hold_liste(r, afgoer=False):
     ud = []
     for hid, farve in enumerate(HOLD_FARVER[:ANTAL_HOLD]):
         pladser = []
-        for d in r.spillere(hid):
-            f = d.valg
+        sp = r.spillere(hid)
+        n = max(KUNDER_PR_HOLD, len(sp)) if sp else 0
+        for k in range(n):
+            # Et hold med færre spillere fyldes op; spillerne ejer de ekstra på skift.
+            d, ekstra = sp[k % len(sp)], k >= len(sp)
+            valg = "tilfaeldig" if ekstra else d.valg
+            f = valg
             if afgoer and not er_figur(f):
-                f = secrets.choice(aabne)
+                fri = [a for a in aabne if a not in brugt]
+                f = secrets.choice(fri or aabne)
             if er_figur(f):
                 nr = brugt.get(f, 0)
                 brugt[f] = nr + 1
                 udseende, navn = roster_udseende(f), roster_navn(f, nr) or ""
             else:
                 udseende, navn = {}, ("Tilfældig" if f == "tilfaeldig" else "")
-            pladser.append({"id": f"b_{d.pid}", "navn": navn, "udseende": udseende,
-                            "ejer": d.pid, "valg": d.valg})
+            pladser.append({"id": f"b_{d.pid}_{k}" if ekstra else f"b_{d.pid}", "navn": navn,
+                            "udseende": udseende, "ejer": d.pid, "valg": valg})
         ud.append({"id": hid, "farve": farve, "navn": HOLD_NAVNE[farve], "baevere": pladser})
     return ud
 

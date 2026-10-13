@@ -1,12 +1,12 @@
 # Story 003: Level design and randomisation
 
 > **Epic**: Kundekrigen
-> **Status**: Ready
+> **Status**: Complete
 > **Layer**: N/A (minimal — no architecture layers)
 > **Type**: Logic
 > **Estimate**: TBD (sizing not confirmed — `INTENT UNKNOWN`)
 > **Manifest Version**: N/A (minimal — no control manifest)
-> **Last Updated**: [set by /dev-story when implementation begins]
+> **Last Updated**: 2026-10-13
 
 ## Context
 
@@ -75,7 +75,7 @@
 - Launch: `python3 app.py`, open http://localhost:8788
 - Optional: extend `test/kort_*.mjs` (tests are waived at this `qa.level`; they are the cheapest way to run many seeds).
 
-**Status**: [ ] Not yet created
+**Status**: [x] Created — see Completion Notes
 
 ---
 
@@ -83,3 +83,13 @@
 
 - Depends on: None (brief build order only)
 - Unlocks: None
+
+---
+
+## Completion Notes
+**Completed**: 2026-10-13 — approved by the author in chat ("Story 3 er godkendt")
+**Criteria**: one new archetype per map type (Fort: port, Åbent land: kløfter, Grotte: skakter, Øer: atol), drawn by a separate rng step so old seeds keep their maps; deterministic and validated by the extended `test/kort_*.mjs`. Within scope of the author's later requests: shorter fort gap (median 1167 → 1017 wu, hop rule kept) and forts with 3 floors and 3 customers per team (`KUNDER_PR_HOLD = 3` in `net/transport.js` and `rum.py`).
+**Deviations**: the number of archetypes was chosen autonomously (one per type), then approved; golden trace `test/farer_fra_spor.json` re-recorded (only fort/41 changed).
+**Test Evidence**: `production/qa/evidence/story-003-level-design-randomisation-evidence.md` + images
+**Code Review**: Skipped (review mode solo)
+**Open**: only two open roster figures, so extra customers repeat names (II/III); measured-variation tables in `docs/baner.md` are stale; network play with the new maps not tested.

@@ -136,26 +136,40 @@ const gyldigtHold = (h) => h === null || (Number.isInteger(h) && h >= 0 && h < A
  * Med afgoer (kampstart) trækkes fightere uden figurvalg blandt de åbne;
  * spillerens valg bevares, så 'tilfaeldig' trækkes igen ved Spil igen.
  */
+/** Kunder pr. hold som udgangspunkt (forfatterens valg 2026-10-13; spejlet i
+ *  rum.py): et hold med færre spillere fyldes op, og holdets spillere ejer de
+ *  ekstra på skift. Fortet får én etage pr. kunde. */
+export const KUNDER_PR_HOLD = 3;
+
 function holdListe(deltagere, afgoer = false) {
   const aabne = aabneFigurer();
   const brugt = new Map();                  // figur -> forekomster indtil nu
-  return HOLD_FARVER.map((farve, id) => ({
-    id, farve, navn: HOLD_NAVNE[farve],
-    baevere: deltagere.filter((x) => !x.tilskuer && x.hold === id).map((x) => {
-      let f = x.valg;
-      if (afgoer && !Number.isInteger(f)) f = lod(aabne);
-      let navn = '', udseende = {};
-      if (Number.isInteger(f)) {
-        const nr = brugt.get(f) || 0;
-        brugt.set(f, nr + 1);
-        udseende = rosterUdseende(f);
-        navn = rosterNavn(f, nr) || '';
-      } else if (f === 'tilfaeldig') {
-        navn = 'Tilfældig';
-      }
-      return { id: `b_${x.pid}`, navn, udseende, ejer: x.pid, valg: x.valg };
-    }),
-  }));
+  return HOLD_FARVER.map((farve, id) => {
+    const sp = deltagere.filter((x) => !x.tilskuer && x.hold === id);
+    const n = sp.length ? Math.max(KUNDER_PR_HOLD, sp.length) : 0;
+    return {
+      id, farve, navn: HOLD_NAVNE[farve],
+      baevere: Array.from({ length: n }, (_, k) => {
+        const x = sp[k % sp.length], ekstra = k >= sp.length;
+        const valg = ekstra ? 'tilfaeldig' : x.valg;
+        let f = valg;
+        if (afgoer && !Number.isInteger(f)) {
+          const fri = aabne.filter((a) => !brugt.has(a));    // helst en figur, der ikke er brugt
+          f = lod(fri.length ? fri : aabne);
+        }
+        let navn = '', udseende = {};
+        if (Number.isInteger(f)) {
+          const nr = brugt.get(f) || 0;
+          brugt.set(f, nr + 1);
+          udseende = rosterUdseende(f);
+          navn = rosterNavn(f, nr) || '';
+        } else if (f === 'tilfaeldig') {
+          navn = 'Tilfældig';
+        }
+        return { id: ekstra ? `b_${x.pid}_${k}` : `b_${x.pid}`, navn, udseende, ejer: x.pid, valg };
+      }),
+    };
+  });
 }
 
 /**

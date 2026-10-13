@@ -136,6 +136,10 @@ const MODEL = {
   byggeskum:        { tegn: 'skumpistol',     greb: 'sigte',   baglaens: 0.25 },  // Byggeskum
   traestammeregn:   { tegn: 'faktura',        greb: 'haand', greb_h: 0.35 },   // Kvartalsopkrævning
   covid:            { tegn: 'virus',          greb: 'haand', greb_h: 0.5 },   // COVID
+  frugtordning:     { tegn: 'frugtkurv',      greb: 'haand', greb_h: 0.4 },   // Frugtordningen
+  moedeindkaldelse: { tegn: 'kalender',       greb: 'haand', greb_h: 0.35 },  // Mødeindkaldelsen
+  kaffeulykke:      { tegn: 'kaffekande',     greb: 'haand', greb_h: 0.45 },  // Kaffeulykken
+  turbostol:        { tegn: 'kontorstol',     greb: 'haand', greb_h: 0.5 },   // Turbostolen
   overgiv:          { tegn: 'flag',           greb: 'haand' },   // Opsig aftalen
 };
 
@@ -437,6 +441,19 @@ export function lavBaeverView(scene, baever, holdIdx, terraen) {
     }
   }
 
+  // Turbostolen: kontorstolen under kunden, mens den flyver (dovent).
+  let stol = null;
+  function lavStol() {
+    const maal = vaabenMaal('kontorstol');
+    const geo = new PlaneGeometry(maal.bredde, maal.hoejde);
+    geo.translate(-maal.midtX, -maal.bund, 0);
+    const m = new Mesh(geo, new MeshBasicMaterial({
+      map: tex(maal.canvas, 'vaaben-kontorstol'), transparent: true, depthTest: true, depthWrite: false }));
+    m.renderOrder = Z.baevere - 0.5;
+    gruppe.add(m);
+    return m;
+  }
+
   let sus = null;
   function lavSus() {
     sus = new Mesh(new PlaneGeometry(SUS_D, SUS_D), new MeshBasicMaterial({
@@ -538,7 +555,8 @@ export function lavBaeverView(scene, baever, holdIdx, terraen) {
       tid += dt; animT += dt;
       doedTid = b.doed ? doedTid + dt : 0;
       if (slagT !== null) { slagT += dt; if (slagT >= SLAG_TID || b.doed) slagT = null; }
-      const graver = !!(b.graver || b.redskab) && !b.doed;
+      const turbo = !!b.turbo && !b.doed;      // Turbostolen: ingen bor, men stolen under kunden
+      const graver = !!(b.graver || b.redskab) && !b.doed && !turbo;
       const smittet = (b.smittet | 0) > 0 && !b.doed;
       const x = b.x, y = b.y;               // interpoleret af klienten
       gruppe.position.x = x;
@@ -658,6 +676,12 @@ export function lavBaeverView(scene, baever, holdIdx, terraen) {
       }
       const vm = visId && model(visId);
       if (vm) vm.visible = true;
+      if (turbo && !stol) stol = lavStol();
+      if (stol) {
+        stol.visible = turbo;
+        // Tegningen vender mod venstre (ryglæn og motor til højre): spejles mod retningen.
+        if (turbo) { stol.position.set(-2 * spejl, -4, 0.2); stol.scale.set(-spejl, 1, 1); }
+      }
       haandFor.rotation.z = 0;
       const [sx, sy] = tilWu(skulderPx[0], skulderPx[1]);
       let laen = 0;                            // borets forlæns hældning af kroppen

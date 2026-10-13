@@ -1,12 +1,12 @@
 # Story 002: New weapons and the reworked arsenal UI
 
 > **Epic**: Kundekrigen
-> **Status**: Ready
+> **Status**: Complete
 > **Layer**: N/A (minimal — no architecture layers)
 > **Type**: Integration
 > **Estimate**: TBD (sizing not confirmed — `INTENT UNKNOWN`)
 > **Manifest Version**: N/A (minimal — no control manifest)
-> **Last Updated**: [set by /dev-story when implementation begins]
+> **Last Updated**: 2026-10-13
 
 ## Context
 
@@ -83,3 +83,13 @@
 
 - Depends on: None (brief build order only)
 - Unlocks: None
+
+---
+
+## Completion Notes
+**Completed**: 2026-10-13 — approved by the author in chat ("Arsenalet er godkendt")
+**Criteria**: four new weapons (Frugtordningen, Mødeindkaldelsen, Kaffeulykken, Turbostolen) — deterministic and covered by `test/vaaben_nye.mjs`; Mødeindkaldelsen and Turbostolen seen in the browser, the two crate-only weapons only in the headless test. Arsenal UI reworked to the author's spec: icon bar (colour circles, key under, name pops up) and a drawer showing all 21 weapons without scrolling, with a hover detail card.
+**Deviations**: names chosen autonomously, then approved; Kaffeulykken drops fall straight down (help text fixed).
+**Test Evidence**: `production/qa/evidence/story-002-new-weapons-arsenal-ui-evidence.md` + images 01–15
+**Code Review**: Skipped (review mode solo)
+**Open**: name tag can overlap the turn timer when a customer flies high (Turbostolen); no fuel gauge for Turbostolen; sounds not listened to; network play not tested.

@@ -884,6 +884,10 @@ export function lavProjektilView(scene, fx = null) {
     virus:   { tegn: 'virus', klister: true, virus: true, loeft: 4.5 },     // COVID
     sten:    { billede: 'mursten', b: 16 },                          // "mursten fra loftet"
     papir:   { tegn: 'papirbunke', drejer: true },                   // Papirbunke
+    frugtkurv: { tegn: 'frugtkurv' },                                // Frugtordningen
+    banan:   { tegn: 'banan' },                                      // dens bananer
+    kalender: { tegn: 'kalender', klister: true, drejer: true },     // Mødeindkaldelsen
+    kaffe:   { tegn: 'kaffe', spor: 'ild' },                         // Kaffeulykken
   };
   KUGLE.agern = KUGLE.bombe;          // spritenavne fra før omdøbningen
   KUGLE.stamme = KUGLE.faktura;

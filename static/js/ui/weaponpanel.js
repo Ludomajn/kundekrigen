@@ -4,7 +4,7 @@
  * glider ind fra venstre OVER spillet. Ikke et centreret modalvindue: man
  * skal stadig kunne se sin kunde, vinden og banen, mens man vælger.
  *
- * Et GITTER, ikke et radialmenu. Radialmenuer er designet til en pegeenhed;
+ * En lodret liste (et gitter med én kolonne), ikke et radialmenu. Radialmenuer er designet til en pegeenhed;
  * at navigere et med piletaster er strengt dårligere end et gitter, og det
  * skalerer elendigt over otte punkter.
  *
@@ -22,15 +22,9 @@
 import { VAABEN, KATEGORIER } from '../sim/weapons.js';
 import { esc, T, brydOrd } from './tekst.js';
 import { FAVORIT_TASTER, FAVORIT_LABELS } from './keyboard.js';
-import { ikonHTML } from './vaabenikoner.js';
+import { ikonHTML, farveGruppe } from './vaabenikoner.js';
 
-const KATEGORI_NAVN = {
-  skyts: 'Skyts', kast: 'Kast', naerkamp: 'Nærkamp', udstyr: 'Udstyr',
-  terraen: 'Terræn', special: 'Special', meta: 'Andet',
-};
 
-const HINT = '<kbd>↑</kbd><kbd>↓</kbd><kbd>←</kbd><kbd>→</kbd> vælg · <kbd>Enter</kbd> tag · ' +
-             '<kbd>Shift</kbd>+<kbd>1</kbd>–<kbd>0</kbd> læg på bjælken · <kbd>Esc</kbd> luk';
 
 const ammoTekst = (a) => (a < 0 ? T.spil.ubegraenset : a === 0 ? '0' : `×${a}`);
 /** Hvorfor en tom celle er låst. Fjernsupport kommer aldrig i kasserne. */
@@ -77,52 +71,40 @@ export function lavVaabenpanel(rod) {
     if (c) c.classList.remove(e.animationName === 'bundetPuls' ? 'bundet' : 'nej');
   });
 
+  /** En celle: cirkel (ikon + antal + bjælketast) og navnet under. Navn,
+   *  beskrivelse og lås for den markerede/hoverede celle står i detaljekortet. */
   function celleHTML(w) {
-    return `<button class="vp-celle" type="button" tabindex="-1" data-vaaben="${esc(w.id)}"
-              title="${esc(w.navn)} — ${esc(w.hjaelp || '')}">
-      ${ikonHTML(w, 'vp-ikon')}
+    return `<button class="vp-celle farve-${farveGruppe(w)}" type="button" tabindex="-1" data-vaaben="${esc(w.id)}"
+              aria-label="${esc(w.navn)}">
+      <span class="favcirkel">${ikonHTML(w, 'vp-ikon', true)}<span class="vp-ammo num"></span><span class="vp-tast num"></span></span>
       <span class="vp-navn">${brydOrd(w.navn)}</span>
-      <span class="vp-info"><span class="vp-ammo num"></span><span class="vp-haand">${T.spil.iHaanden}</span></span>
-      <span class="vp-tast num"></span>
-      <span class="vp-hjaelp">${esc(w.hjaelp || '')}</span>
-      <span class="vp-laas"></span>
     </button>`;
   }
 
   function byg(v, baever) {
-    const grupper = KATEGORIER.map((k) => ({
-      k, navn: KATEGORI_NAVN[k] || k,
-      vaaben: Object.values(VAABEN).filter((w) => w.kategori === k),
-    })).filter((g) => g.vaaben.length);
+    // Ét gitter i kategoriernes rækkefølge; cirklens farve viser typen, så
+    // alt kan ses uden at rulle (ingen overskrift pr. kategori).
+    const alle = KATEGORIER.flatMap((k) => Object.values(VAABEN).filter((w) => w.kategori === k));
 
     rod.innerHTML = `
       <div class="vp-kort" role="dialog" aria-label="${esc(T.spil.vaabenpanel)}">
         <header class="vp-hoved">
-          <div>
-            <h2>${T.spil.vaabenpanel}</h2>
-            <div class="vp-under">${T.spil.arsenalUnder}</div>
-          </div>
+          <h2>${T.spil.vaabenpanel}</h2>
           <button class="vp-luk" type="button" tabindex="-1" aria-label="${esc(T.spil.lukArsenal)}"
                   title="${esc(T.spil.lukArsenal)}">
             <svg viewBox="0 0 12 20" aria-hidden="true"><path d="M8.5 3.5l-6 6.5 6 6.5" fill="none"
               stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
           </button>
         </header>
-        <div class="vp-hint">${HINT}</div>
-        <div class="vp-krop">
-          ${grupper.map((g) => `
-            <section class="vp-gruppe vp-${esc(g.k)}">
-              <h3>${esc(g.navn)}</h3>
-              <div class="vp-gitter">${g.vaaben.map(celleHTML).join('')}</div>
-            </section>`).join('')}
-        </div>
+        <div class="vp-krop"><div class="vp-gitter">${alle.map(celleHTML).join('')}</div></div>
         <div class="vp-status" aria-live="polite"></div>
-      </div>`;
+      </div>
+      <div class="vp-detalje" aria-live="polite"></div>`;
 
     punkter = [...rod.querySelectorAll('.vp-celle')];
     celler = punkter.map((c) => ({
       c, w: VAABEN[c.dataset.vaaben],
-      ammo: c.querySelector('.vp-ammo'), tast: c.querySelector('.vp-tast'), laas: c.querySelector('.vp-laas'),
+      ammo: c.querySelector('.vp-ammo'), tast: c.querySelector('.vp-tast'), laas: '',
     }));
     sidsteSig = '';
     opdaterCeller(v, baever);
@@ -151,13 +133,31 @@ export function lavVaabenpanel(rod) {
       if (tom) x.c.setAttribute('aria-disabled', 'true'); else x.c.removeAttribute('aria-disabled');
       x.ammo.textContent = ammoTekst(a);
       x.tast.textContent = plads >= 0 ? FAVORIT_LABELS[plads] : '';
-      x.laas.textContent = tom ? laasTekst(x.w) : '';
+      x.laas = tom ? laasTekst(x.w) : '';
     }
+    if (aaben) visDetalje(celler[i]);
   }
 
   function marker(rul) {
     punkter.forEach((p, j) => p.classList.toggle('paa', j === i));
     if (rul) rulTil(punkter[i]);
+    visDetalje(celler[i]);
+  }
+
+  /** Detaljekortet folder sig ud ved siden af den markerede/hoverede celle. */
+  function visDetalje(x) {
+    const d = rod.querySelector('.vp-detalje');
+    if (!d || !x) return;
+    const tast = x.tast.textContent;
+    d.innerHTML = `
+      <div class="vpd-top"><b>${esc(x.w.navn)}</b><span class="vpd-ammo num">${esc(x.ammo.textContent)}</span>
+        ${tast ? `<span class="vpd-tast num">${esc(tast)}</span>` : ''}</div>
+      <p>${esc(x.w.hjaelp || '')}</p>
+      ${x.laas ? `<div class="vpd-laas">${esc(x.laas)}</div>` : ''}`;
+    const kort = rod.getBoundingClientRect(), c = x.c.getBoundingClientRect();
+    const skala = kort.width / rod.offsetWidth || 1;            // skuffen er skaleret med --ui
+    d.style.top = `${Math.max(0, (c.top - kort.top) / skala - 6)}px`;
+    d.classList.add('vis');
   }
 
   /** Rul kun inde i skuffen — scrollIntoView ville også flytte siden. Står
@@ -165,8 +165,7 @@ export function lavVaabenpanel(rod) {
   function rulTil(c) {
     const krop = rod.querySelector('.vp-krop');
     if (!c || !krop) return;
-    const g = c.closest('.vp-gruppe');
-    const top = g && c.offsetTop - g.offsetTop < 48 ? g.offsetTop : c.offsetTop;
+    const top = c.offsetTop;
     const bund = c.offsetTop + c.offsetHeight;
     if (top < krop.scrollTop) krop.scrollTop = Math.max(0, top - 6);
     else if (bund > krop.scrollTop + krop.clientHeight) krop.scrollTop = bund - krop.clientHeight + 8;

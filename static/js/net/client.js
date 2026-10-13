@@ -78,8 +78,8 @@ export function lavKlient(verden, transport, bus) {
       case 'turSprungetOver': b.springOver = 0; break;
       case 'smittet': b.smittet = e.turer || 1; break;
       case 'rask': b.smittet = 0; break;
-      case 'redskabStart': if (e.slags === 'bor') b.graver = true; break;
-      case 'redskabSlut': b.graver = false; break;
+      case 'redskabStart': b.graver = true; if (e.slags === 'turbo') b.turbo = true; break;
+      case 'redskabSlut': b.graver = false; b.turbo = false; break;
     }
   }
 

@@ -69,10 +69,10 @@ const NAVNE = [
   // Eksplosionerne og baggrunden (Kenney.nl).
   'brag', 'nedslag', 'sejr', 'ambience',
   ...Object.entries(GRUPPER).flatMap(([g, n]) => Array.from({ length: n }, (_, i) => `k_${g}_${i + 1}`)),
-  // Brugerens egne optagelser (vaerktoej/kundelyde.py): vindersangene og
+  // Brugerens egne optagelser (vaerktoej/kundelyde.py): vindersangen og
   // telefonens sekretær. Karakterernes egne replikker og speakeren står i
   // ui/stemmer.js og hentes derfra (hentLyde).
-  'stemme_vindersangen', 'stemme_vindermusik_2', 'stemme_sekretaer_lyd',
+  'stemme_vindermusik_2', 'stemme_sekretaer_lyd',   // kun den nyeste vindersang (forfatterens valg)
   // Brugerens egne effektlyde (samme værktøj): våbnene og telefonen.
   'stemme_skud', 'stemme_kanon_lyd', 'stemme_granat', 'stemme_slag', 'stemme_slag_2',
   'stemme_systemnedbrud', 'stemme_fax', 'stemme_telefonlyd_til_event',
